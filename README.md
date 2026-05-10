@@ -18,6 +18,12 @@
       docker/        ARPPL 独立发布的 Dockerfile、Nginx、Compose
       README.md
 
+    thinwall-dt/
+      backend/       薄壁件数字孪生 FastAPI 工艺服务
+      frontend/      Thinwall-DT 独立 React + Vite 界面
+      docker/        Thinwall-DT 独立发布的 Dockerfile、Nginx、Compose
+      README.md
+
   testcase/          本地真实测试数据，不复制进镜像
   GIT_DEVELOPMENT.md
   README.md
@@ -47,6 +53,18 @@ docker compose -f process_apps/arppl/docker/compose.yml up -d --no-build
 
 ```text
 http://localhost/
+```
+
+启动 Thinwall-DT 工艺 App：
+
+```powershell
+docker compose -f process_apps/thinwall-dt/docker/compose.yml up -d --build
+```
+
+访问 Thinwall-DT 独立 App：
+
+```text
+http://localhost:18080/
 ```
 
 启动公共工作流平台：
@@ -160,6 +178,14 @@ POST /workflow/v1/<new-process-id>/run
 
 Docker 要使用独立服务名、镜像名、volume 名和端口。多个工艺 App 同时在一台机器启动时，不要全部占用 `80:80`。
 
+`thinwall-dt` 当前先作为独立工艺 App 管理，尚未接入公共 workflow 平台。它的独立容器入口为：
+
+```powershell
+docker compose -f process_apps/thinwall-dt/docker/compose.yml up -d --build
+```
+
+后续接入平台时，应在 `thinwall-dt` 后端新增 workflow 专用 API，而不是破坏现有独立界面和当前 `/prediction`、`/compensation` 接口。
+
 ## 验证命令
 
 后端合同测试：
@@ -180,6 +206,7 @@ Docker 配置检查：
 
 ```powershell
 docker compose -f process_apps/arppl/docker/compose.yml config
+docker compose -f process_apps/thinwall-dt/docker/compose.yml config
 docker compose -f workflow_platform/docker/compose.yml config
 ```
 

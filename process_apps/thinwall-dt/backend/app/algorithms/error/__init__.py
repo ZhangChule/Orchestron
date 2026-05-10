@@ -1,0 +1,1 @@
+"""Wall error algorithms."""
