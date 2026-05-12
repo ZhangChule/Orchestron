@@ -1,36 +1,24 @@
 # 公共工作流平台
 
-`workflow_platform` 是跨工艺 App 共享的工作流前端，不属于任何单个工艺算法。它通过工艺 App 暴露的 manifest 和 workflow API 进行发现、参数配置、节点执行和结果读取。
+`workflow_platform` 是 Orchestron 的公共编排前端，不属于任何单一工艺 App。它负责展示工艺库、配置节点、连接节点、运行 workflow API，并在页面内嵌入 Unity WebGL 虚拟加工控件。
 
-## 当前能力
+当前画布支持两类节点：
 
-- 图形化节点画布：Input -> Process -> Output。
-- 节点拖拽：画布节点可以直接拖拽移动。
-- 图形化连线：点击上游节点输出端口，再点击下游节点输入端口，即可建立连接。
-- 节点交互：点击选择节点，双击或右键节点打开对应弹窗。
-- 工艺服务发现：读取 `/api/process-a/workflow/manifest`。
-- 输入节点配置：选择 source/target 点云文件，并设置 `visual pts` 默认值；平台会显示输入模型格式、点数、法向和包围盒。
-- 工艺节点配置：设置 `u`、`alpha`、`Lower tol`、`Upper tol`、`max_outer`、`max_inner` 和配准采样比例；默认全采样，也可选择 `1/2` 或 `1/4`。
-- 输出节点配置：查看配准后的位姿、矩阵、记录目录和原始 JSON 输出。
-- 节点执行：默认调用 `/api/process-a/register-files` 并把结果保存到 ARPPL 独立 App 记录区；关闭保存记录模式后调用 `/api/process-a/workflow/run-files`，若旧服务尚未提供该端点则回退到 `register-files`。
-- 结果查看：点击输出节点，在右侧 Inspector 查看 4x4 位姿矩阵、`x/y/z` 平移量、`Rx/Ry/Rz` 欧拉角、记录目录和原始输出。
-- 语言切换：顶部 Language 控件支持中文/英文界面切换。
+- 工艺节点：来自 `process_apps/*`，每个工艺都应有独立前端、后端和部署环境。
+- 孪生节点：当前为虚拟加工节点，由 `virtual_machining_platform` 提供 Unity WebGL 包和壁厚误差预测服务。
 
-## 本地打开
+## 模块边界
 
-先启动 ARPPL 工艺 App：
+- 工作流平台负责：节点编排、参数配置、运行调度、结果查看、结果向下游节点流动。
+- 工艺 App 负责：独立后端、独立 UI、独立 Docker 发布、`/workflow/manifest` 和 `/workflow/run` 契约。
+- 虚拟加工平台负责：Unity WebGL 场景、虚拟加工相关计算、壁厚误差预测和 Unity 桥接。
+- `thinwall-dt` 只作为历史原型保留，工作流平台不得调用其内部 API 或代码。
 
-```powershell
-docker compose -f process_apps/arppl/docker/compose.yml up -d --no-build
-```
+当前唯一临时例外：壁厚误差补偿工艺的 `Open App` 按钮仍打开 `http://localhost:18080/`，因为补偿 App 前端尚未完成。该入口不参与工作流计算。
 
-然后直接打开：
+## 启动
 
-```text
-workflow_platform/frontend/index.html
-```
-
-或用 Docker 启动公共平台：
+从仓库根目录执行：
 
 ```powershell
 docker compose -f workflow_platform/docker/compose.yml up -d --build
@@ -42,45 +30,104 @@ docker compose -f workflow_platform/docker/compose.yml up -d --build
 http://localhost:8080/
 ```
 
-默认 API Base 会根据当前浏览器访问的主机名自动生成，例如：
+健康检查：
 
 ```text
-http://localhost/api/process-a
+http://localhost:8080/health
+http://localhost:8080/api/virtual-machining/health
 ```
 
-如果 ARPPL 工艺 App 部署在其他端口或机器，在平台顶部的 `API Base` 输入框中修改即可。
+该 Compose 会同时启动工作流前端和虚拟加工后端。壁厚误差补偿、ARPPL 等工艺 App 需要按需单独启动。
 
-## 交互方式
+## API 代理
 
-- 点击画布节点：选中节点并更新右侧 Inspector。
-- 拖动画布节点：调整节点位置。
-- 点击节点端口：从输出端口连到输入端口，定义流程关系。
-- 双击节点：打开该节点自己的配置或结果弹窗。
-- 右键工艺节点：打开快捷菜单，可配置节点、运行流程、打开独立 App。
-- 在配置弹窗选择 `source` 和 `target` 文件后保存，平台会先显示输入模型几何信息，再在运行时把文件作为节点输入提交。
-- 勾选“保存结果到独立 App 记录”时，平台把输出写入 ARPPL 记录区；运行后可打开独立 App 继续查看记录和 Three.js 可视化。
-- 顶部语言控件可切换中文/英文，不影响后端接口。
+工作流平台容器内的 Nginx 负责代理当前工作流调用：
 
-如果独立 App 或平台出现 `502 Bad Gateway`，先确认 ARPPL 服务已启动，再重启 gateway 让 Nginx 重新解析 Docker 服务名：
+```text
+/api/virtual-machining/*
+  -> virtual-machining-backend:8000/*
+
+/api/wall-thickness-compensation/*
+  -> host.docker.internal:18090/api/wall-thickness-compensation/*
+```
+
+未知 `/api/*` 会返回 404，避免静态页面误返回给 API 调用。
+
+## Unity 资源
+
+工作流平台从以下路径加载 Unity WebGL：
+
+```text
+virtual_machining_platform/UnityBuild/
+```
+
+构建镜像时，该目录会被复制到容器内：
+
+```text
+/usr/share/nginx/html/virtual-machining/UnityBuild
+```
+
+前端桥接代码位于：
+
+```text
+workflow_platform/frontend/virtualMachiningWidget.js
+```
+
+后续 Unity 重新打包时，优先只替换 `virtual_machining_platform/UnityBuild/`。如需新增桥接能力，先更新 `contracts/virtual-machining/unity-bridge.md`，再调整 `virtualMachiningWidget.js` 的方法映射。
+
+## 已接入节点
+
+### ARPPL
+
+- 类型：工艺节点
+- 默认 API Base：`http://localhost/api/process-a`
+- 输入：`source` / `target` 点云文件
+- 参数：`u`、`alpha`、`Lower tol`、`Upper tol`、`max_outer`、`max_inner`、采样比例
+- 输出：位姿矩阵、xyz、欧拉角、记录目录、原始 JSON
+
+使用该节点前，需要启动：
 
 ```powershell
-docker compose -f process_apps/arppl/docker/compose.yml restart gateway
+docker compose -f process_apps/arppl/docker/compose.yml up -d --build
 ```
 
-## 与工艺 App 的边界
+### Virtual Machining
 
-公共平台只负责：
+- 类型：孪生节点
+- 默认 API Base：`/api/virtual-machining`
+- 输入：工件尺寸、材料、刀具、主轴转速、进给、轴向/径向切深、刚度点
+- 运行：调用 `virtual_machining_platform/backend` 的 `/prediction/wall-error`
+- 输出：`wall_error`
 
-- 发现工艺 App。
-- 配置节点输入。
-- 调度节点执行。
-- 展示输出结果。
+`wall_error` 可以直接连接到壁厚误差补偿节点。建立连线后，平台会把上游误差点 JSON 自动补全到下游补偿输入中。
 
-工艺 App 负责：
+### Wall Thickness Compensation
 
-- 自己的算法后端。
-- 自己的独立 UI。
-- 自己的 `remoteEntry.js` 和 `ProcessLauncher`。
-- 自己的 Docker 发布方案。
+- 类型：工艺节点
+- 默认 API Base：`/api/wall-thickness-compensation`
+- 当前临时独立 App 入口：`http://localhost:18080/`
+- 输入：壁厚误差点 JSON
+- 参数：补偿方法、径向切深、模型版本
+- 输出：补偿建议、平均误差、`machining_compensation_plan`、原始 JSON
 
-这样新增第二个工艺时，只需要让它提供同样的 manifest 与 workflow run API，平台就能作为公共调度入口继续扩展。
+使用该节点前，需要启动：
+
+```powershell
+docker compose -f process_apps/wall-thickness-compensation/docker/compose.yml up -d --build
+```
+
+## 信息流动
+
+单工艺节点可作为独立算法运行。例如只运行 ARPPL 时，输入扫描模型和理论模型，配置配准参数后输出位姿结果。
+
+多节点工作流中，输出会向下游流动并更新对应参数。例如：
+
+```text
+ARPPL 定位配准 -> Virtual Machining 虚拟加工 -> Wall Thickness Compensation 误差补偿
+```
+
+理论上，ARPPL 输出的定位位姿应更新虚拟加工坐标系；虚拟加工在不同坐标系下预测壁厚误差；补偿工艺再根据误差输出下一次加工的补偿参数。当前代码已经具备节点结果传递和补偿输入补全能力，Unity 侧坐标系与切削效果联动仍需要后续 Unity 包继续实现和联调。
+
+## 本地静态调试
+
+推荐使用 Docker/Nginx 调试，因为它能正确设置 Unity `.gz` 资源的 `Content-Encoding`。如必须使用普通静态服务器，前端会在浏览器支持 `DecompressionStream` 时尝试自动解压 Unity 资源，但这只适合临时调试。

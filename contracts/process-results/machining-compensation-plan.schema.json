@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orchestron.local/contracts/process-results/machining-compensation-plan.schema.json",
+  "title": "Machining Compensation Plan",
+  "type": "object",
+  "required": ["type", "contract_version", "method", "delta_radial_depth"],
+  "properties": {
+    "type": {
+      "const": "machining_compensation_plan"
+    },
+    "contract_version": {
+      "type": "string",
+      "default": "1.0"
+    },
+    "source_process_id": {
+      "type": "string",
+      "description": "Process app id, for example wall_thickness_compensation."
+    },
+    "method": {
+      "type": "string",
+      "description": "Compensation strategy used by the process app."
+    },
+    "delta_radial_depth": {
+      "type": "number",
+      "description": "Suggested compensation amount. This is not a final next-pass radial depth."
+    },
+    "source_error_summary": {
+      "type": "object",
+      "properties": {
+        "average_error": { "type": "number" },
+        "min_error": { "type": "number" },
+        "max_error": { "type": "number" },
+        "point_count": { "type": "integer" }
+      },
+      "additionalProperties": true
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["artifact_type", "uri"],
+        "properties": {
+          "artifact_type": { "type": "string" },
+          "uri": { "type": "string" },
+          "metadata": { "type": "object" }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

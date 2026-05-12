@@ -1,0 +1,44 @@
+name: wall_thickness_compensation_process_app
+
+services:
+  wall-thickness-compensation-backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    image: wall-thickness-compensation-backend:latest
+    restart: unless-stopped
+    environment:
+      WTC_CORS_ORIGINS: http://localhost:18090,http://127.0.0.1:18090,http://localhost:8080,http://127.0.0.1:8080
+      WTC_CORS_ORIGIN_REGEX: "https?://.*:8080"
+    expose:
+      - "8000"
+    networks:
+      - wall-thickness-compensation-internal
+
+  wall-thickness-compensation-frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+    image: wall-thickness-compensation-frontend:latest
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - wall-thickness-compensation-internal
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - wall-thickness-compensation-backend
+      - wall-thickness-compensation-frontend
+    ports:
+      - "${WTC_HTTP_PORT:-18090}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - wall-thickness-compensation-internal
+
+networks:
+  wall-thickness-compensation-internal:
+    driver: bridge

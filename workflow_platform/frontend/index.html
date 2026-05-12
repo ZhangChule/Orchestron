@@ -48,6 +48,7 @@
               <strong id="graphStatus" data-i18n="status.ready">Ready</strong>
             </div>
             <div class="toolbar-actions">
+              <button id="addVirtualNode" class="secondary" type="button" data-i18n="actions.addVirtual">Add Virtual Node</button>
               <button id="clearLinks" class="secondary" type="button" data-i18n="actions.clearLinks">Clear Links</button>
               <button id="resetLayout" class="secondary" type="button" data-i18n="actions.resetLayout">Reset Layout</button>
               <button id="openNodeConfig" class="secondary" type="button" data-i18n="actions.configure">Configure Node</button>
@@ -59,12 +60,37 @@
           <div id="graphCanvas" class="graph-canvas" aria-label="workflow canvas"></div>
         </section>
 
-        <aside class="inspector">
-          <div class="panel-title">
-            <span data-i18n="inspector.label">Inspector</span>
-            <strong id="inspectorTitle">ARPPL</strong>
-          </div>
-          <div id="inspectorContent" class="inspector-content"></div>
+        <aside class="right-rail">
+          <section id="virtualDock" class="virtual-dock" aria-label="virtual machining dock">
+            <header>
+              <div>
+                <span data-i18n="virtual.label">Virtual Machining</span>
+                <strong data-i18n="virtual.dockTitle">Unity Machining Scene</strong>
+              </div>
+              <div class="virtual-actions">
+                <button id="loadVirtualMachining" type="button" data-i18n="actions.loadVirtual">Load Unity</button>
+                <button id="resetVirtualScene" class="secondary" type="button" data-i18n="actions.resetScene">Reset Scene</button>
+              </div>
+            </header>
+            <div class="virtual-content">
+              <div class="virtual-canvas-wrap">
+                <canvas id="virtualMachiningCanvas" tabindex="-1"></canvas>
+                <div class="virtual-status">
+                  <progress id="virtualMachiningProgress" max="1" value="0"></progress>
+                  <span id="virtualMachiningStatus" data-i18n="virtual.statusIdle">Unity not loaded</span>
+                </div>
+              </div>
+              <ol id="virtualMachiningLog" class="virtual-log" aria-label="virtual machining log"></ol>
+            </div>
+          </section>
+
+          <section class="inspector">
+            <div class="panel-title">
+              <span data-i18n="inspector.label">Inspector</span>
+              <strong id="inspectorTitle">ARPPL</strong>
+            </div>
+            <div id="inspectorContent" class="inspector-content"></div>
+          </section>
         </aside>
       </section>
     </main>
@@ -92,8 +118,16 @@
       <button id="menuRun" type="button" data-i18n="actions.run">Run Workflow</button>
       <button id="menuOpenApp" type="button" data-i18n="actions.openApp">Open App</button>
       <button id="menuClearLinks" type="button" data-i18n="actions.clearLinks">Clear Links</button>
+      <button id="menuDeleteNode" type="button" data-i18n="actions.deleteNode">Delete Node</button>
     </menu>
 
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.js"
+        }
+      }
+    </script>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

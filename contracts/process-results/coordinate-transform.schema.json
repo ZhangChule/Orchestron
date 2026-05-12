@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orchestron.local/contracts/process-results/coordinate-transform.schema.json",
+  "title": "Coordinate System Transform Result",
+  "type": "object",
+  "required": ["type", "contract_version", "matrix", "source_frame", "target_frame"],
+  "properties": {
+    "type": {
+      "const": "coordinate_system_transform"
+    },
+    "contract_version": {
+      "type": "string",
+      "default": "1.0"
+    },
+    "source_process_id": {
+      "type": "string",
+      "description": "Process app id, for example arppl."
+    },
+    "source_frame": {
+      "type": "string",
+      "description": "Coordinate frame before transformation."
+    },
+    "target_frame": {
+      "type": "string",
+      "description": "Coordinate frame after transformation."
+    },
+    "matrix": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "array",
+        "minItems": 4,
+        "maxItems": 4,
+        "items": {
+          "type": "number"
+        }
+      }
+    },
+    "translation": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "unit": { "type": "string", "default": "mm" }
+      }
+    },
+    "rotation": {
+      "type": "object",
+      "properties": {
+        "rx": { "type": "number" },
+        "ry": { "type": "number" },
+        "rz": { "type": "number" },
+        "unit": { "type": "string", "default": "degree" }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["artifact_type", "uri"],
+        "properties": {
+          "artifact_type": { "type": "string" },
+          "uri": { "type": "string" },
+          "metadata": { "type": "object" }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

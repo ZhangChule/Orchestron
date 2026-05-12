@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wall Thickness Compensation</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <span>Process App</span>
+          <h1>壁厚误差补偿</h1>
+        </div>
+        <button id="loadSample" type="button">加载样例</button>
+      </header>
+
+      <section class="workspace">
+        <form id="compensationForm" class="panel">
+          <label>
+            <span>API Base</span>
+            <input id="apiBase" />
+          </label>
+
+          <label>
+            <span>补偿方法</span>
+            <select id="method">
+              <option value="stiffness_based">刚度修正补偿</option>
+              <option value="first_order">线性补偿</option>
+              <option value="mirror">镜像补偿</option>
+            </select>
+          </label>
+
+          <label>
+            <span>径向切深 ae / mm</span>
+            <input id="radialDepth" type="number" min="0.001" step="0.001" value="1.0" />
+          </label>
+
+          <label class="points-field">
+            <span>误差点 JSON</span>
+            <textarea id="pointsInput" spellcheck="false"></textarea>
+          </label>
+
+          <button type="submit">计算补偿方案</button>
+        </form>
+
+        <section class="panel">
+          <span class="eyebrow">Result</span>
+          <pre id="resultOutput">暂无结果</pre>
+        </section>
+
+        <section class="panel">
+          <span class="eyebrow">Boundary</span>
+          <h2>独立工艺 App</h2>
+          <p>
+            这里不加载 Unity，也不做 workflow 编排。补偿结果会输出
+            <code>machining_compensation_plan</code>，供虚拟加工平台消费。
+          </p>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
