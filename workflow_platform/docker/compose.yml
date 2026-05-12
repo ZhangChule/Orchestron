@@ -1,11 +1,24 @@
 name: workflow_platform
 
 services:
+  virtual-machining-backend:
+    build:
+      context: ../..
+      dockerfile: virtual_machining_platform/docker/backend.Dockerfile
+    image: virtual-machining-platform-backend:latest
+    restart: unless-stopped
+    expose:
+      - "8000"
+
   workflow-platform:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ../..
+      dockerfile: workflow_platform/docker/Dockerfile
     image: workflow-platform:latest
     restart: unless-stopped
+    depends_on:
+      - virtual-machining-backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8080:80"

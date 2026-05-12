@@ -1,0 +1,45 @@
+name: thinwall_dt_process_app
+
+services:
+  thinwall-dt-backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    image: thinwall-dt-process-backend:latest
+    restart: unless-stopped
+    environment:
+      THINWALL_DT_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:18080,http://127.0.0.1:18080,http://localhost:8080,http://127.0.0.1:8080
+    expose:
+      - "8000"
+    networks:
+      - thinwall-dt-internal
+
+  thinwall-dt-frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/thinwall-dt
+    image: thinwall-dt-process-frontend:latest
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - thinwall-dt-internal
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - thinwall-dt-backend
+      - thinwall-dt-frontend
+    ports:
+      - "${THINWALL_DT_HTTP_PORT:-18080}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - thinwall-dt-internal
+
+networks:
+  thinwall-dt-internal:
+    driver: bridge

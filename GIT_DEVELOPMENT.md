@@ -129,20 +129,32 @@ Common commit types:
 
 ## Verification Before Push
 
-For backend-related changes, run at least:
+For workflow-platform frontend changes, run at least:
 
 ```powershell
-python process_apps/arppl/backend/run_output3_tests.py
+node --check workflow_platform/frontend/app.js
+node --check workflow_platform/frontend/virtualMachiningWidget.js
 ```
 
-For frontend-related changes, run at least:
+For virtual-machining backend changes, run at least:
 
 ```powershell
-cd process_apps/arppl/frontend
-npm run build
+python -m compileall -q virtual_machining_platform/backend
 ```
 
-If a verification step is too slow or requires unavailable data, record exactly what was and was not tested in the commit or handoff note.
+For process-app backend changes, run a Python compile check on the touched app, for example:
+
+```powershell
+python -m compileall -q process_apps/wall-thickness-compensation/backend
+```
+
+For deployment changes, rebuild the affected Compose stack:
+
+```powershell
+docker compose -f workflow_platform/docker/compose.yml up -d --build
+```
+
+If a verification step is too slow, blocked by Docker Hub/GitHub network access, or requires unavailable local test data, record exactly what was and was not tested in the commit or handoff note.
 
 ## Line Endings
 
@@ -214,14 +226,14 @@ git push -u origin main
 
 ## Ignore Policy
 
-The root `.gitignore` ignores:
+The root `.gitignore` and `.dockerignore` ignore:
 
 - Python caches, virtual environments, and test caches.
 - Frontend `node_modules`, `dist`, temporary folders, and logs under each process app.
 - Backend runtime logs and `process_apps/*/backend/records/`.
-- Generated `testcase` result folders such as `output`, `output2`, `output3`, and `logs`.
+- Local `testcase/` data for Git and Docker build contexts.
 
-Principle: source code, configs, reproducible scripts, and essential small fixtures belong in Git. Large generated results and rebuildable caches do not.
+Principle: source code, configs, reproducible scripts, and essential small fixtures belong in Git. Large local datasets, generated results, virtual environments, logs, and rebuildable caches do not.
 
 ## Working With Codex
 

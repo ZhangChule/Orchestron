@@ -1,0 +1,217 @@
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# =========================
+# Logs
+# =========================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+!.env.example
+!.env.template
+
+# =========================
+# Frontend: React + Vite
+# =========================
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/build/
+frontend/.vite/
+frontend/.cache/
+frontend/coverage/
+frontend/*.local
+
+# Vite local env files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# TypeScript
+frontend/*.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+
+# Package manager cache
+.pnpm-store/
+.yarn/
+.yarn-cache/
+
+# =========================
+# Three.js / R3F generated assets
+# =========================
+# 如果这些是运行时生成或转换出来的文件，建议忽略
+frontend/public/generated/
+frontend/public/cache/
+frontend/public/tmp/
+
+# Unity WebGL preview assets are required by the standalone app.
+frontend/public/unity-build/
+frontend/public/unity/
+frontend/public/Build/
+
+# =========================
+# Backend: FastAPI + Pydantic
+# =========================
+backend/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/**/*.pyd
+
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/.coverage
+backend/htmlcov/
+
+backend/venv/
+backend/.venv/
+backend/env/
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Python packaging
+backend/build/
+backend/dist/
+backend/*.egg-info/
+
+# Local database / cache
+backend/*.sqlite3
+backend/*.db
+backend/.cache/
+backend/tmp/
+backend/temp/
+
+# Uploads and generated files
+backend/uploads/
+backend/generated/
+backend/static/generated/
+backend/media/
+backend/results/
+backend/simulation_outputs/
+
+# =========================
+# Unity project
+# =========================
+unity/[Ll]ibrary/
+unity/[Tt]emp/
+unity/[Oo]bj/
+unity/[Bb]uild/
+unity/[Bb]uilds/
+unity/[Ll]ogs/
+unity/[Uu]ser[Ss]ettings/
+
+# Unity generated project files
+unity/*.csproj
+unity/*.sln
+unity/*.suo
+unity/*.user
+unity/*.userprefs
+unity/*.pidb
+unity/*.booproj
+unity/*.svd
+unity/*.pdb
+unity/*.mdb
+unity/*.opendb
+unity/*.VC.db
+
+# Unity crash/debug
+unity/sysinfo.txt
+unity/MemoryCaptures/
+unity/Recordings/
+
+# Unity Addressables / AssetBundles generated output
+unity/ServerData/
+unity/AssetBundles/
+unity/aa/
+
+# Unity WebGL generated build output
+unity/WebGLBuild/
+unity/Build/
+unity/Builds/
+unity/WebGL/
+
+# Do NOT ignore these Unity source folders:
+# unity/Assets/
+# unity/Packages/
+# unity/ProjectSettings/
+
+# =========================
+# CAD / CAM / simulation temp files
+# =========================
+*.tmp
+*.bak
+*.backup
+
+# 大型中间结果，通常不进 Git
+*.meshcache
+*.dexel
+*.voxel
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.vtk
+*.vtu
+*.ply.cache
+
+# 加工仿真输出
+simulation_outputs/
+results/
+exports/
+generated_models/
+generated_meshes/
+
+# =========================
+# Large media / model files
+# =========================
+# 如果这些是源资产，可以不要 ignore，而是用 Git LFS 管理
+# 如果只是生成产物，可以打开下面这些 ignore
+# *.stp
+# *.step
+# *.iges
+# *.igs
+# *.fbx
+# *.glb
+# *.gltf
+# *.obj
+# *.stl
+# *.ply
+# *.mp4
+# *.mov
+# *.avi
+
+# =========================
+# Docker / deployment local files
+# =========================
+docker-compose.override.yml
+
+# =========================
+# Misc
+# =========================
+.cache/
+tmp/
+temp/
