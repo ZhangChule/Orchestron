@@ -1,0 +1,27 @@
+{
+    "coordinateSpace": "workpieceLocalMm",
+    "start": { "x": 0, "y": 50, "z": -8 },
+    "segments": [
+      { "mode": "rapid", "to": { "x": 0, "y": 30, "z": -8 }, "speedMmPerSec": 50, "spindleRpm": 3000 },
+      { "mode": "rapid", "to": { "x": -57, "y": 30, "z": -8}, "speedMmPerSec": 50, "spindleRpm": 3000 },
+
+      { "mode": "cut", "to": { "x": -57, "y": 30, "z": 128 }, "speedMmPerSec": 15, "spindleRpm": 3000 },
+      { "mode": "rapid", "to": { "x": -50, "y": 30, "z": 128 }, "speedMmPerSec": 50, "spindleRpm": 3000 },
+      { "mode": "rapid", "to": { "x": -50, "y": 20, "z": -8 }, "speedMmPerSec": 50, "spindleRpm": 3000 },
+      { "mode": "rapid", "to": { "x": -57, "y": 20, "z": -8 }, "speedMmPerSec": 50, "spindleRpm": 3000 },
+ 
+      { "mode": "cut", "to": { "x": -57, "y": 20, "z": 128 }, "speedMmPerSec": 15, "spindleRpm": 3000 },
+      { "mode": "rapid", "to": { "x": -50, "y": 20, "z": 128 }, "speedMmPerSec": 50, "spindleRpm": 3000 },        
+      { "mode": "rapid", "to": { "x": -50, "y": 10, "z": -8 }, "speedMmPerSec": 50, "spindleRpm": 3000 },
+      { "mode": "rapid", "to": { "x": -57, "y": 10, "z": -8 }, "speedMmPerSec": 50, "spindleRpm": 3000 },
+        
+      { "mode": "cut", "to": { "x": -57, "y": 10, "z": 128 }, "speedMmPerSec": 15, "spindleRpm": 3000 },
+      { "mode": "rapid", "to": { "x": -50, "y": 10, "z": 128 }, "speedMmPerSec": 50, "spindleRpm": 3000 },        
+      { "mode": "rapid", "to": { "x": -50, "y": 0, "z": -8 }, "speedMmPerSec": 50, "spindleRpm": 3000 },
+      { "mode": "rapid", "to": { "x": -57, "y": 0, "z": -8 }, "speedMmPerSec": 50, "spindleRpm": 3000 },
+        
+      { "mode": "cut", "to": { "x": -57, "y": 0, "z": 128 }, "speedMmPerSec": 15, "spindleRpm": 3000 },    
+      { "mode": "rapid", "to": { "x": -57, "y": 50, "z": 128 }, "speedMmPerSec": 50, "spindleRpm": 3000 },        
+      { "mode": "rapid", "to": { "x": 0, "y": 50, "z": -8}, "speedMmPerSec": 50, "spindleRpm": 3000 }
+    ]
+}
