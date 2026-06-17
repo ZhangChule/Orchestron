@@ -9,20 +9,26 @@ const KEYBOARD_EVENTS = new Set(['keydown', 'keypress', 'keyup'])
 const UNITY_METHODS = {
   applyCompensationPlan: 'ApplyCompensationPlan',
   applyCoordinateTransform: 'ApplyCoordinateTransform',
+  exportTriDexelImage: 'ExportTriDexelImage',
+  importTriDexelImage: 'ImportTriDexelImage',
   loadScene: 'LoadWorkpieceAndTool',
   previewCompensation: 'StartMaterialRemovalPreview',
   resetScene: 'ResetToInitialScene',
   showWallErrorField: 'ShowWallErrorField',
+  startMachiningJob: 'StartMachiningJob',
+  setWorkpieceTransformMatrix: 'SetWorkpieceTransformMatrix',
 }
 
 export function createVirtualMachiningWidget({ canvas, status, progress, log }) {
   const state = {
     instance: null,
     loading: false,
+    lastMachiningResult: null,
     ready: false,
     objectUrls: [],
     restoreKeyboardGuard: null,
   }
+  const removeMachiningCompletedListener = installMachiningCompletedListener()
 
   async function load() {
     if (state.ready) return state.instance
@@ -88,6 +94,16 @@ export function createVirtualMachiningWidget({ canvas, status, progress, log }) 
     return true
   }
 
+  function sendRawString(methodName, value = '') {
+    if (!state.instance?.SendMessage) {
+      writeLog(`Unity is not ready; command ${methodName} was not sent.`)
+      return false
+    }
+    state.instance.SendMessage(UNITY_BRIDGE_OBJECT, methodName, String(value ?? ''))
+    writeLog(`SendMessage ${UNITY_BRIDGE_OBJECT}.${methodName}`)
+    return true
+  }
+
   async function sendWorkflowResult(workflowBody) {
     await load()
     const result = workflowBody?.result ?? workflowBody
@@ -142,6 +158,7 @@ export function createVirtualMachiningWidget({ canvas, status, progress, log }) 
     state.objectUrls = []
     state.restoreKeyboardGuard?.()
     state.restoreKeyboardGuard = null
+    removeMachiningCompletedListener()
   }
 
   return {
@@ -160,15 +177,49 @@ export function createVirtualMachiningWidget({ canvas, status, progress, log }) 
       await load()
       return send(UNITY_METHODS.showWallErrorField, payload)
     },
+    startMachiningJob: async (payload) => {
+      await load()
+      return send(UNITY_METHODS.startMachiningJob, payload)
+    },
     startMaterialRemovalPreview: async (payload) => {
       await load()
-      return send(UNITY_METHODS.previewCompensation, payload)
+      return send(UNITY_METHODS.startMachiningJob, payload)
     },
     showWallErrorField: async (payload) => {
       await load()
       return send(UNITY_METHODS.showWallErrorField, payload)
     },
+    exportTriDexelImage: async () => {
+      await load()
+      return send(UNITY_METHODS.exportTriDexelImage)
+    },
+    importTriDexelImage: async (base64) => {
+      await load()
+      return sendRawString(UNITY_METHODS.importTriDexelImage, base64)
+    },
+    setWorkpieceTransformMatrix: async (payload) => {
+      await load()
+      return send(UNITY_METHODS.setWorkpieceTransformMatrix, payload)
+    },
     sendWorkflowResult,
+  }
+
+  function installMachiningCompletedListener() {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return () => {}
+    const handler = (event) => {
+      const detail = event?.detail ?? {}
+      state.lastMachiningResult = {
+        command: detail.command ?? null,
+        triDexelImageBase64: detail.triDexelImageBase64 ?? null,
+      }
+      if (state.lastMachiningResult.triDexelImageBase64) {
+        writeLog('Unity machining completed with tri-dexel image.')
+      } else {
+        writeLog('Unity machining completed.')
+      }
+    }
+    window.addEventListener('UnityMachiningCompleted', handler)
+    return () => window.removeEventListener('UnityMachiningCompleted', handler)
   }
 
   async function prepareUnityConfig(config) {

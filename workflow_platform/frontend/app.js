@@ -12,6 +12,7 @@ import {
   DEFAULT_STIFFNESS_FILE_PATH,
   defaultVirtualStiffnessPoints,
 } from './runtime/workflowStiffnessDefaults.js'
+import { buildUnityMachiningJobPayload } from './runtime/unityPreviewAdapter.js'
 import {
   RUN_MODES,
   createRunStartedEvent,
@@ -2434,7 +2435,9 @@ async function runVirtualMachiningNode(node) {
   }
 
   const points = body.points ?? []
-  const materialRemovalPreview = buildMaterialRemovalPreviewPayload(request, points)
+  const materialRemovalPreview = buildMaterialRemovalPreviewPayload(request, points, {
+    source_node_id: node.id,
+  })
   node.data = {
     materialRemovalPreview,
     source: node.id,
@@ -2937,33 +2940,15 @@ function buildVirtualPredictionRequest(params) {
   }
 }
 
-function buildMaterialRemovalPreviewPayload(request, points) {
-  return {
-    workpiece: {
-      length: request.workpiece.length,
-      height: request.workpiece.height,
-      thickness: request.workpiece.thickness,
-      baseWidth: request.workpiece.base_width,
-      baseHeight: request.workpiece.base_height,
-    },
-    process: {
-      spindleSpeed: request.process.spindle_speed,
-      feedRate: request.process.feed_rate,
-      axialDepth: request.process.axial_depth,
-      radialDepth: request.process.radial_depth,
-      cuttingMode: request.process.cutting_mode,
-    },
-    points: points
-      .filter((point) => Number.isFinite(Number(point.error)))
-      .map((point) => ({
-        id: point.id,
-        x: numberValue(point.y, 0) - request.process.radial_depth,
-        y: numberValue(point.z, 0),
-        z: numberValue(point.x, 0),
-        stiffness: numberValue(point.stiffness, 0),
-        error: numberValue(point.error, 0),
-      })),
-  }
+function buildMaterialRemovalPreviewPayload(request, points, context = {}) {
+  return buildUnityMachiningJobPayload({
+    node_result_version_id: context.node_result_version_id ?? context.nodeResultVersionId ?? null,
+    points,
+    preview_level: context.preview_level ?? 'operation',
+    request,
+    source_node_id: context.source_node_id ?? context.sourceNodeId ?? null,
+    toolpath: context.toolpath ?? null,
+  })
 }
 
 function outputPayloadForNode(node) {
@@ -3134,7 +3119,9 @@ async function previewSelectedVirtualCutting() {
       ...request,
       key_points: parseVirtualKeyPoints(node.params.key_points),
     }
-    const payload = buildMaterialRemovalPreviewPayload(request, points)
+    const payload = buildMaterialRemovalPreviewPayload(request, points, {
+      source_node_id: node.id,
+    })
     if (!node.virtualSceneReady) {
       await state.virtualMachining.loadScene(scenePayload)
       node.virtualSceneReady = true
