@@ -1,4 +1,42 @@
 import { createVirtualMachiningWidget } from './virtualMachiningWidget.js'
+import { CLOSED_LOOP_DEMO } from './runtime/workflowClosedLoopDemo.js'
+import { executeNode } from './runtime/workflowNodeExecutor.js'
+import { createProcessParameterState } from './runtime/workflowLogicNodes.js'
+import { arrangeWorkflowNodes } from './runtime/workflowLayout.js'
+import {
+  resolveUpstreamNodeResultOfType,
+  upstreamNodeIds,
+} from './runtime/workflowResultResolution.js'
+import {
+  DEFAULT_STIFFNESS_FILE_NAME,
+  DEFAULT_STIFFNESS_FILE_PATH,
+  defaultVirtualStiffnessPoints,
+} from './runtime/workflowStiffnessDefaults.js'
+import {
+  RUN_MODES,
+  createRunStartedEvent,
+  executableNodesForRunMode,
+  expandedUpstreamNodeIdsForSelected,
+  prepareWorkflowStateForRunMode,
+} from './runtime/workflowRunModes.js'
+import { addWorkflowEdge } from './runtime/workflowGraph.js'
+import {
+  captureVirtualProcessBase,
+  virtualNodeRuntimeParameterView,
+  virtualNodeWithRuntimeProcessParameters,
+} from './runtime/workflowParameterBase.js'
+import {
+  createRunSnapshot,
+  restoreRunSnapshot,
+} from './runtime/workflowSnapshot.js'
+import {
+  appendExecutionEvent,
+  createExecutionEvent,
+  createInitialWorkflowState,
+  exportWorkflowState,
+  markNodeAndDirectDownstreamResultsStale,
+  updateWorkflowState,
+} from './runtime/workflowExecutionCore.js'
 import * as THREE from 'three'
 import { OrbitControls } from './vendor/OrbitControls.js'
 
@@ -138,19 +176,24 @@ const translations = {
     'virtual.tabTool': '刀具',
   },
   en: {
+    'actions.addLogic': 'Add Logic Node',
     'actions.addVirtual': 'Add Virtual Node',
     'actions.clearLinks': 'Clear Links',
     'actions.close': 'Close',
     'actions.configure': 'Configure Node',
     'actions.deleteNode': 'Delete Node',
+    'actions.exportSnapshot': 'Export Snapshot',
     'actions.import': 'Import File',
+    'actions.importSnapshot': 'Import Snapshot',
     'actions.load': 'Load Process',
+    'actions.loadClosedLoopDemo': 'Load Closed-loop Demo',
     'actions.loadScene': 'Load Scene',
     'actions.loadVirtual': 'Load Unity',
     'actions.openApp': 'Open App',
     'actions.resetLayout': 'Arrange',
     'actions.resetScene': 'Reset Scene',
     'actions.run': 'Run Workflow',
+    'actions.runFromSelected': 'Run From Selected',
     'actions.save': 'Save',
     'actions.previewCutting': 'Preview Cutting',
     'actions.sendToVirtual': 'Preview Result',
@@ -160,6 +203,7 @@ const translations = {
     'catalog.title': 'Process Apps',
     'dialog.fileHint': 'After selecting source/target, the platform reads format, point count, normals, and bounding box so the input can be checked.',
     'dialog.inputTitle': 'Configure Input Node',
+    'dialog.logicTitle': 'Configure Logic Node',
     'dialog.outputTitle': 'Inspect Output Node',
     'dialog.processTitle': 'Configure Process Node',
     'dialog.virtualTitle': 'Configure Virtual Machining Node',
@@ -181,9 +225,19 @@ const translations = {
     'files.stiffness': 'Stiffness File',
     'inspector.label': 'Inspector',
     'language.label': 'Language',
+    'logic.condition': 'condition',
+    'logic.conditionMeta': 'threshold branch',
+    'logic.humanReview': 'human-review',
+    'logic.humanReviewMeta': 'human checkpoint',
+    'logic.parameterUpdate': 'parameter-update',
+    'logic.parameterUpdateMeta': 'parameter intent',
+    'logic.stop': 'stop / convergence',
+    'logic.stopMeta': 'iteration guard',
     'mode.saved': 'Saved Record Mode',
     'mode.stateless': 'Stateless Mode',
     'node.input': 'Input',
+    'node.logic': 'Logic',
+    'node.logicModelOnly': 'minimal runtime',
     'node.inputMeta': 'source / target',
     'node.inputName': 'Point Cloud Files',
     'node.output': 'Output',
@@ -202,6 +256,7 @@ const translations = {
     'palette.next': 'Next Process App',
     'palette.reserved': 'Reserved',
     'param.alpha': 'Robust loss alpha',
+    'param.approveLabel': 'approveLabel',
     'param.axialDepth': 'Axial Depth',
     'param.baseHeight': 'Base Height',
     'param.baseWidth': 'Base Width',
@@ -211,6 +266,7 @@ const translations = {
     'param.diameter': 'Tool Diameter',
     'param.elasticModulus': 'Elastic Modulus',
     'param.errorPoints': 'Error Points JSON',
+    'param.falseLabel': 'falseLabel',
     'param.feedRate': 'Feed Rate',
     'param.full': 'Full sampling',
     'param.half': '1/2 sampling',
@@ -223,20 +279,34 @@ const translations = {
     'param.length': 'Length',
     'param.lowerTol': 'Lower tol',
     'param.material': 'Material Grade',
+    'param.maxIterations': 'maxIterations',
+    'param.metricPath': 'metricPath',
     'param.modelVersion': 'Model Version',
+    'param.note': 'note',
+    'param.operator': 'operator',
     'param.persist': 'Save result to standalone app records',
     'param.poissonRatio': 'Poisson Ratio',
     'param.quarter': '1/4 sampling',
+    'param.prompt': 'prompt',
     'param.radialDepth': 'Radial Depth',
+    'param.rejectLabel': 'rejectLabel',
+    'param.reviewerRole': 'reviewerRole',
     'param.sampleRatio': 'Registration sampling ratio',
+    'param.sourcePath': 'sourcePath',
+    'param.stopReason': 'stopReason',
     'param.spindleSpeed': 'Spindle Speed',
+    'param.targetPath': 'targetPath',
     'param.teeth': 'Teeth',
+    'param.threshold': 'threshold',
     'param.thickness': 'Wall Thickness',
+    'param.tolerance': 'tolerance',
     'param.toolLength': 'Cutter Length',
     'param.toolOverall': 'Overall Length',
     'param.toolType': 'Tool Type',
     'param.workpiecePreview': 'Workpiece Preview',
+    'param.trueLabel': 'trueLabel',
     'param.upperTol': 'Upper tol',
+    'param.updateMode': 'updateMode',
     'param.virtualHelpText': 'The virtual machining node loads the Unity scene from the root virtual_machining_platform package and emits wall-error results for downstream compensation.',
     'param.visualPts': 'visual pts',
     'param.previewCutting': 'Cutting preview is available after wall-error prediction',
@@ -247,18 +317,26 @@ const translations = {
     'result.raw': 'Raw Output',
     'result.record': 'Result Record',
     'result.sourceTarget': 'Input Models',
+    'runtime.eventLog': 'Event Log',
+    'runtime.label': 'Run Snapshot',
     'status.connecting': 'Choose a target input port',
     'status.done': 'Succeeded',
     'status.geometry': 'Reading geometry',
     'status.invalidLink': 'Port types do not match',
     'status.linkCreated': 'Link created',
     'status.linkFilled': 'Parameters filled from link',
+    'status.logicExecutionBlocked': 'LogicNode execution uses minimal local runtime semantics in this change.',
     'status.loading': 'Loading manifest',
+    'status.demoLoaded': 'Closed-loop demo loaded',
+    'status.snapshotExported': 'Snapshot exported',
+    'status.snapshotImported': 'Snapshot imported',
+    'status.snapshotImportFailed': 'Snapshot import failed',
     'status.nodeAdded': 'Node added',
     'status.nodeDeleted': 'Node deleted',
     'status.noLinks': 'Connect nodes first',
     'status.noRunnable': 'No runnable nodes on the canvas',
     'status.ready': 'Ready',
+    'status.runBlocked': 'Run blocked',
     'status.running': 'Running',
     'status.saved': 'Configuration saved',
     'topbar.label': 'Public Workflow Platform',
@@ -342,6 +420,54 @@ const processRegistry = [
   },
 ]
 
+const LOGIC_NODE_DEFINITIONS = {
+  condition: {
+    kind: 'condition',
+    nameKey: 'logic.condition',
+    metaKey: 'logic.conditionMeta',
+    defaultParameters: {
+      metricPath: 'max_wall_error',
+      operator: '>',
+      threshold: '0.05',
+      trueLabel: 'true',
+      falseLabel: 'false',
+    },
+  },
+  stop: {
+    kind: 'stop',
+    nameKey: 'logic.stop',
+    metaKey: 'logic.stopMeta',
+    defaultParameters: {
+      metricPath: 'wall_error.summary.max',
+      tolerance: '0.02',
+      maxIterations: '3',
+      stopReason: 'converged',
+    },
+  },
+  'parameter-update': {
+    kind: 'parameter-update',
+    nameKey: 'logic.parameterUpdate',
+    metaKey: 'logic.parameterUpdateMeta',
+    defaultParameters: {
+      sourcePath: 'compensation_plan.radial_depth_delta',
+      targetPath: 'process_parameters.radial_depth',
+      updateMode: 'add',
+      note: '',
+    },
+  },
+  'human-review': {
+    kind: 'human-review',
+    nameKey: 'logic.humanReview',
+    metaKey: 'logic.humanReviewMeta',
+    defaultParameters: {
+      prompt: 'Review workflow result before continuing.',
+      approveLabel: 'Approve',
+      rejectLabel: 'Reject',
+      reviewerRole: '',
+    },
+  },
+}
+
 const state = {
   connectingFrom: null,
   edges: [],
@@ -351,11 +477,13 @@ const state = {
   nodes: [],
   selectedNodeId: null,
   virtualMachining: null,
+  workflowState: createInitialWorkflowState(),
 }
 
 let activeWorkpiecePreview = null
 
 const elements = {
+  addLogicNode: document.querySelector('#addLogicNode'),
   addVirtualNode: document.querySelector('#addVirtualNode'),
   apiBase: document.querySelector('#apiBase'),
   clearLinks: document.querySelector('#clearLinks'),
@@ -363,14 +491,20 @@ const elements = {
   dialogFooter: document.querySelector('#dialogFooter'),
   dialogKicker: document.querySelector('#dialogKicker'),
   dialogTitle: document.querySelector('#dialogTitle'),
+  eventLogCount: document.querySelector('#eventLogCount'),
+  eventLogList: document.querySelector('#eventLogList'),
+  exportRunSnapshot: document.querySelector('#exportRunSnapshot'),
   graphCanvas: document.querySelector('#graphCanvas'),
   graphStatus: document.querySelector('#graphStatus'),
+  importRunSnapshot: document.querySelector('#importRunSnapshot'),
   inspectorContent: document.querySelector('#inspectorContent'),
   inspectorTitle: document.querySelector('#inspectorTitle'),
   languageSelect: document.querySelector('#languageSelect'),
+  loadClosedLoopDemo: document.querySelector('#loadClosedLoopDemo'),
   loadManifest: document.querySelector('#loadManifest'),
   loadVirtualMachining: document.querySelector('#loadVirtualMachining'),
   loadVirtualScene: document.querySelector('#loadVirtualScene'),
+  logicNodeKind: document.querySelector('#logicNodeKind'),
   menuClearLinks: document.querySelector('#menuClearLinks'),
   menuConfigure: document.querySelector('#menuConfigure'),
   menuDeleteNode: document.querySelector('#menuDeleteNode'),
@@ -383,8 +517,10 @@ const elements = {
   processCatalog: document.querySelector('#processCatalog'),
   resetLayout: document.querySelector('#resetLayout'),
   resetVirtualScene: document.querySelector('#resetVirtualScene'),
+  runFromSelected: document.querySelector('#runFromSelected'),
   runWorkflow: document.querySelector('#runWorkflow'),
   sendVirtualResult: document.querySelector('#sendVirtualResult'),
+  snapshotImportFile: document.querySelector('#snapshotImportFile'),
   virtualMachiningCanvas: document.querySelector('#virtualMachiningCanvas'),
   virtualMachiningLog: document.querySelector('#virtualMachiningLog'),
   virtualMachiningProgress: document.querySelector('#virtualMachiningProgress'),
@@ -405,6 +541,7 @@ function bootstrap() {
   renderCatalog()
   renderGraph()
   bindEvents()
+  publishWorkflowRuntimeState()
   setStatus(t('status.ready'), 'ready')
 }
 
@@ -420,11 +557,21 @@ function bindEvents() {
 
   elements.apiBase.addEventListener('change', saveApiBaseFromField)
   elements.loadManifest.addEventListener('click', () => void loadManifestForSelection())
-  elements.runWorkflow.addEventListener('click', () => void runWorkflow())
+  elements.runWorkflow.addEventListener('click', () => void runWorkflow(RUN_MODES.RUN_ALL))
+  elements.runFromSelected?.addEventListener('click', () => void runWorkflow(RUN_MODES.RUN_FROM_SELECTED))
   elements.openStandalone.addEventListener('click', openStandaloneApp)
   elements.openNodeConfig.addEventListener('click', openNodeDialog)
   elements.clearLinks.addEventListener('click', clearLinks)
   elements.resetLayout.addEventListener('click', resetLayout)
+  elements.loadClosedLoopDemo?.addEventListener('click', loadClosedLoopDemo)
+  elements.exportRunSnapshot?.addEventListener('click', exportCurrentRunSnapshot)
+  elements.importRunSnapshot?.addEventListener('click', () => elements.snapshotImportFile?.click())
+  elements.snapshotImportFile?.addEventListener('change', () => void importRunSnapshotFromFile())
+  elements.addLogicNode?.addEventListener('click', () => {
+    const kind = elements.logicNodeKind?.value ?? 'condition'
+    addLogicNode(kind, 90 + state.nodes.length * 18, 90 + state.nodes.length * 12)
+    setStatus(t('status.nodeAdded'), 'done')
+  })
   elements.addVirtualNode.addEventListener('click', () => {
     addVirtualMachiningNode(90 + state.nodes.length * 18, 90 + state.nodes.length * 12)
     setStatus(t('status.nodeAdded'), 'done')
@@ -444,7 +591,7 @@ function bindEvents() {
   })
   elements.menuRun.addEventListener('click', () => {
     hideNodeMenu()
-    void runWorkflow()
+    void runWorkflow(RUN_MODES.RUN_FROM_SELECTED)
   })
   elements.menuOpenApp.addEventListener('click', () => {
     hideNodeMenu()
@@ -518,6 +665,14 @@ function renderGraph() {
   const nodesHtml = state.nodes
     .map((node) => {
       const spec = nodeSpec(node)
+      const runtimeView = node.type === 'virtual' ? virtualNodeRuntimeParameterView(node, state.workflowState) : null
+      const dataAttrs = runtimeView
+        ? [
+            `data-design-radial-depth="${escapeHtml(runtimeView.design_parameters?.radial_depth ?? '')}"`,
+            `data-runtime-base-version="${escapeHtml(runtimeView.base_version_id ?? '')}"`,
+            `data-runtime-radial-depth="${escapeHtml(runtimeView.display_parameters?.radial_depth ?? '')}"`,
+          ].join(' ')
+        : ''
       const classes = [
         'node',
         `node-${node.type}`,
@@ -525,7 +680,7 @@ function renderGraph() {
         state.connectingFrom === node.id ? 'connecting' : '',
       ].filter(Boolean).join(' ')
       return `
-        <article class="${classes}" data-node="${node.id}" style="left:${node.x}px; top:${node.y}px">
+        <article class="${classes}" data-node="${node.id}" ${dataAttrs} style="left:${node.x}px; top:${node.y}px">
           ${hasInputPort(node) ? `<button class="port port-in" type="button" data-node="${node.id}" data-port="in" aria-label="${escapeHtml(t('edge.to'))}"></button>` : ''}
           ${hasOutputPort(node) ? `<button class="port port-out" type="button" data-node="${node.id}" data-port="out" aria-label="${escapeHtml(t('edge.from'))}"></button>` : ''}
           <span>${escapeHtml(spec.label)}</span>
@@ -587,13 +742,32 @@ function renderGraph() {
 }
 
 function nodeSpec(node) {
+  if (isLogicNode(node)) {
+    const definition = logicNodeDefinition(node.logicKind)
+    return {
+      label: t('node.logic'),
+      meta: t(definition.metaKey),
+      name: t(definition.nameKey),
+      tags: [definition.kind, t('node.logicModelOnly')],
+    }
+  }
+
   if (node.type === 'virtual') {
     const points = node.data?.wallErrorPoints ?? []
+    const runtimeView = virtualNodeRuntimeParameterView(node, state.workflowState)
+    const designRadial = runtimeView?.design_parameters?.radial_depth
+    const executionRadial = runtimeView?.execution_parameters?.radial_depth
     return {
       label: t('node.virtual'),
       meta: t('node.virtualMeta'),
       name: t('node.virtualName'),
-      tags: [node.params.model_version, `${points.length || 0} ${t('field.points')}`],
+      tags: [
+        node.params.model_version,
+        executionRadial == null
+          ? `base ae ${formatParameterValue(designRadial)} mm`
+          : `run ae ${formatParameterValue(executionRadial)} mm`,
+        `${points.length || 0} ${t('field.points')}`,
+      ],
     }
   }
 
@@ -761,6 +935,8 @@ function isValidEdge(fromId, toId) {
   if (!hasOutputPort(from) || !hasInputPort(to)) return false
   if (pathExists(to.id, from.id)) return false
 
+  if (isLogicNode(from) || isLogicNode(to)) return true
+
   if (from.groupId && from.groupId === to.groupId) {
     return (from.type === 'processInput' && to.type === 'process') || (from.type === 'process' && to.type === 'processOutput')
   }
@@ -771,8 +947,8 @@ function isValidEdge(fromId, toId) {
 
 function addEdge(from, to, options = {}) {
   if (state.edges.some((edge) => edge.from === from && edge.to === to)) return
-  state.edges = state.edges.filter((edge) => edge.to !== to)
-  state.edges.push({ from, to })
+  state.edges = addWorkflowEdge(state.edges, { from, to })
+  markWorkflowResultsStale([from, to], 'workflow edge changed')
   const filled = applyConnectionData(from, to)
   if (!options.silent && filled) setStatus(t('status.linkFilled'), 'done')
 }
@@ -829,32 +1005,40 @@ function propagateFromNode(nodeId, visited = new Set()) {
 }
 
 function clearLinks() {
+  const previousEdges = clone(state.edges)
   state.edges = []
   state.connectingFrom = null
+  const touchedNodes = [...new Set(previousEdges.flatMap((edge) => [edge.from, edge.to]).filter(Boolean))]
+  state.workflowState = markNodeAndDirectDownstreamResultsStale(
+    state.workflowState,
+    touchedNodes,
+    previousEdges,
+    'workflow edges cleared',
+  )
+  publishWorkflowRuntimeState()
   renderGraph()
   setStatus(t('status.ready'), 'ready')
 }
 
 function resetLayout() {
-  let row = 0
-  const virtualNodes = state.nodes.filter((node) => node.type === 'virtual')
-  virtualNodes.forEach((node, index) => {
-    node.x = 80
-    node.y = 120 + index * 170
-  })
-
-  const groupIds = [...new Set(state.nodes.filter((node) => node.groupId).map((node) => node.groupId))]
-  groupIds.forEach((groupId) => {
-    const y = 120 + row * 170
-    const input = groupInput(groupId)
-    const process = groupProcess(groupId)
-    const output = groupOutput(groupId)
-    if (input) Object.assign(input, { x: 390, y })
-    if (process) Object.assign(process, { x: 390 + PROCESS_GAP, y })
-    if (output) Object.assign(output, { x: 390 + PROCESS_GAP * 2, y })
-    row += 1
-  })
+  arrangeCanvasNodes()
   renderGraph()
+}
+
+function arrangeCanvasNodes() {
+  const canvasWidth = Math.max(960, elements.graphCanvas?.clientWidth ?? window.innerWidth ?? 1440)
+  state.nodes = arrangeWorkflowNodes(state.nodes, {
+    canvasWidth,
+    originX: 40,
+    originY: 44,
+    processGap: 240,
+    rowGap: 136,
+    unitGap: 220,
+  })
+  if (elements.graphCanvas) {
+    elements.graphCanvas.scrollLeft = 0
+    elements.graphCanvas.scrollTop = 0
+  }
 }
 
 function deleteSelectedNode() {
@@ -888,23 +1072,47 @@ function renderInspector() {
   }
 
   elements.inspectorTitle.textContent = nodeLabel(node.id)
-  if (node.type === 'virtual') elements.inspectorContent.innerHTML = virtualInspectorHtml(node)
+  if (isLogicNode(node)) elements.inspectorContent.innerHTML = logicInspectorHtml(node)
+  else if (node.type === 'virtual') elements.inspectorContent.innerHTML = virtualInspectorHtml(node)
   else if (node.type === 'processInput') elements.inspectorContent.innerHTML = inputInspectorHtml(node)
   else if (node.type === 'process') elements.inspectorContent.innerHTML = processInspectorHtml(node)
   else elements.inspectorContent.innerHTML = outputInspectorHtml(node)
   bindInspectorActions()
 }
 
+function logicInspectorHtml(node) {
+  const definition = logicNodeDefinition(node.logicKind)
+  const rows = Object.entries(node.params ?? {})
+    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`)
+    .join('')
+  return `
+    <section class="inspector-section">
+      <h2>${escapeHtml(t(definition.nameKey))}</h2>
+      <p class="muted">${escapeHtml(t('status.logicExecutionBlocked'))}</p>
+      <dl class="kv-list">${rows}</dl>
+      <div class="button-row">
+        <button type="button" data-action="configure">${escapeHtml(t('actions.configure'))}</button>
+      </div>
+    </section>
+  `
+}
+
 function virtualInspectorHtml(node) {
   const points = node.data?.wallErrorPoints ?? []
   const wallErrorReady = points.some((point) => Number.isFinite(Number(point.error)))
+  const runtimeView = virtualNodeRuntimeParameterView(node, state.workflowState)
+  const executionRadial = runtimeView?.execution_parameters?.radial_depth
+  const sourcePatchIds = runtimeView?.source_patch_ids ?? []
   return `
     <section class="inspector-section">
       <h2>${escapeHtml(t('node.virtualName'))}</h2>
       <dl class="kv-list">
         <dt>${escapeHtml(t('param.modelVersion'))}</dt><dd>${escapeHtml(node.params.model_version)}</dd>
         <dt>${escapeHtml(t('param.material'))}</dt><dd>${escapeHtml(node.params.material.name)}</dd>
-        <dt>${escapeHtml(t('param.radialDepth'))}</dt><dd>${escapeHtml(node.params.process.radial_depth)} mm</dd>
+        <dt>Design radial depth</dt><dd>${escapeHtml(formatParameterValue(runtimeView?.design_parameters?.radial_depth))} mm</dd>
+        <dt>Execution radial depth</dt><dd data-runtime-radial-depth="${escapeHtml(executionRadial ?? '')}">${escapeHtml(formatParameterValue(executionRadial, 'not run yet'))}${executionRadial == null ? '' : ' mm'}</dd>
+        <dt>Runtime base</dt><dd>${escapeHtml(runtimeView?.base_version_id ?? 'not run yet')}</dd>
+        <dt>Source patches</dt><dd>${escapeHtml(sourcePatchIds.length ? sourcePatchIds.join(', ') : 'none')}</dd>
         <dt>${escapeHtml(t('files.stiffness'))}</dt><dd>${escapeHtml(node.params.stiffness_file_name || t('files.unselected'))}</dd>
         <dt>${escapeHtml(t('field.points'))}</dt><dd>${escapeHtml(points.length)}</dd>
       </dl>
@@ -1067,10 +1275,65 @@ function renderDialogContent() {
   if (!node) return
   disposeActiveWorkpiecePreview()
   elements.dialogKicker.textContent = node.id
-  if (node.type === 'virtual') renderVirtualDialog(node)
+  if (isLogicNode(node)) renderLogicDialog(node)
+  else if (node.type === 'virtual') renderVirtualDialog(node)
   else if (node.type === 'processInput') renderInputDialog(node)
   else if (node.type === 'process') renderProcessDialog(node)
   else renderOutputDialog(node)
+}
+
+function renderLogicDialog(node) {
+  const definition = logicNodeDefinition(node.logicKind)
+  elements.dialogTitle.textContent = t('dialog.logicTitle')
+  elements.dialogBody.className = 'dialog-body dialog-grid'
+  elements.dialogBody.innerHTML = `
+    <section class="dialog-params">
+      <h3>${escapeHtml(t(definition.nameKey))}</h3>
+      ${logicFieldsHtml(node)}
+    </section>
+    <section class="dialog-params">
+      <details class="help-card" open>
+        <summary>${escapeHtml(t('node.logicModelOnly'))}</summary>
+        <p>${escapeHtml(t('status.logicExecutionBlocked'))}</p>
+      </details>
+    </section>
+  `
+  elements.dialogFooter.innerHTML = dialogSaveFooter()
+  bindDialogActions()
+}
+
+function logicFieldsHtml(node) {
+  if (node.logicKind === 'condition') {
+    return `
+      ${textField('logicMetricPath', t('param.metricPath'), node.params.metricPath)}
+      ${selectField('logicOperator', t('param.operator'), node.params.operator, ['>', '>=', '<', '<=', '==', '!='])}
+      ${textField('logicThreshold', t('param.threshold'), node.params.threshold)}
+      ${textField('logicTrueLabel', t('param.trueLabel'), node.params.trueLabel)}
+      ${textField('logicFalseLabel', t('param.falseLabel'), node.params.falseLabel)}
+    `
+  }
+  if (node.logicKind === 'stop') {
+    return `
+      ${textField('logicMetricPath', t('param.metricPath'), node.params.metricPath)}
+      ${textField('logicTolerance', t('param.tolerance'), node.params.tolerance)}
+      ${textField('logicMaxIterations', t('param.maxIterations'), node.params.maxIterations)}
+      ${textField('logicStopReason', t('param.stopReason'), node.params.stopReason)}
+    `
+  }
+  if (node.logicKind === 'parameter-update') {
+    return `
+      ${textField('logicSourcePath', t('param.sourcePath'), node.params.sourcePath)}
+      ${textField('logicTargetPath', t('param.targetPath'), node.params.targetPath)}
+      ${selectField('logicUpdateMode', t('param.updateMode'), node.params.updateMode, ['replace', 'add', 'scale'])}
+      ${textAreaField('logicNote', t('param.note'), node.params.note)}
+    `
+  }
+  return `
+    ${textAreaField('logicPrompt', t('param.prompt'), node.params.prompt)}
+    ${textField('logicApproveLabel', t('param.approveLabel'), node.params.approveLabel)}
+    ${textField('logicRejectLabel', t('param.rejectLabel'), node.params.rejectLabel)}
+    ${textField('logicReviewerRole', t('param.reviewerRole'), node.params.reviewerRole)}
+  `
 }
 
 function renderInputDialog(node) {
@@ -1430,11 +1693,57 @@ function bindDialogBodyActions() {
 function saveSelectedDialogValues() {
   const node = selectedNode()
   if (!node) return
+  const before = staleRelevantNodeSnapshot(node)
+  if (isLogicNode(node)) saveLogicDialogValues(node)
   if (node.type === 'virtual') saveVirtualDialogValues(node)
   if (node.type === 'processInput') saveInputDialogValues(node)
   if (node.type === 'process') saveProcessDialogValues(node)
+  if (stableJson(before) !== stableJson(staleRelevantNodeSnapshot(node))) {
+    markWorkflowResultsStale([node.id], 'node config changed')
+  }
   setStatus(t('status.saved'), 'ready')
   renderGraph()
+}
+
+function saveLogicDialogValues(node) {
+  if (node.logicKind === 'condition') {
+    node.params = {
+      ...node.params,
+      falseLabel: valueFromInput('#logicFalseLabel', 'false'),
+      metricPath: valueFromInput('#logicMetricPath', 'result.summary.max_abs_error'),
+      operator: document.querySelector('#logicOperator')?.value ?? '>',
+      threshold: valueFromInput('#logicThreshold', '0.05'),
+      trueLabel: valueFromInput('#logicTrueLabel', 'true'),
+    }
+    return
+  }
+  if (node.logicKind === 'stop') {
+    node.params = {
+      ...node.params,
+      maxIterations: valueFromInput('#logicMaxIterations', '3'),
+      metricPath: valueFromInput('#logicMetricPath', 'wall_error.summary.max'),
+      stopReason: valueFromInput('#logicStopReason', 'converged'),
+      tolerance: valueFromInput('#logicTolerance', '0.02'),
+    }
+    return
+  }
+  if (node.logicKind === 'parameter-update') {
+    node.params = {
+      ...node.params,
+      note: valueFromInput('#logicNote', ''),
+      sourcePath: valueFromInput('#logicSourcePath', 'compensation_plan.radial_depth_delta'),
+      targetPath: valueFromInput('#logicTargetPath', 'process_parameters.radial_depth'),
+      updateMode: document.querySelector('#logicUpdateMode')?.value ?? 'add',
+    }
+    return
+  }
+  node.params = {
+    ...node.params,
+    approveLabel: valueFromInput('#logicApproveLabel', 'Approve'),
+    prompt: valueFromInput('#logicPrompt', 'Review workflow result before continuing.'),
+    rejectLabel: valueFromInput('#logicRejectLabel', 'Reject'),
+    reviewerRole: valueFromInput('#logicReviewerRole', ''),
+  }
 }
 
 function saveInputDialogValues(node) {
@@ -1520,6 +1829,7 @@ function saveVirtualDialogValues(node) {
       : document.querySelector('#vmStiffnessFileName')?.textContent ?? node.params.stiffness_file_name,
     tool_id: document.querySelector('#vmToolSelect')?.value ?? node.params.tool_id,
   }
+  captureVirtualProcessBase(node, { overwrite: true })
 }
 
 async function loadManifestForSelection() {
@@ -1543,31 +1853,395 @@ async function loadManifestForSelection() {
   }
 }
 
-async function runWorkflow() {
+async function runWorkflow(mode = RUN_MODES.RUN_ALL) {
   saveApiBaseFromField()
-  const runnable = runnableNodesForSelection()
+  let runnable
+  try {
+    runnable = runnableNodesForMode(mode)
+  } catch (error) {
+    recordRuntimeEvent({
+      event_type: 'run_stopped',
+      summary: errorMessage(error, t('status.runBlocked')),
+      payload: {
+        run_mode: mode,
+        selected_node_id: state.selectedNodeId,
+        skip_reason: errorMessage(error, t('status.runBlocked')),
+        state_change_summary: `Run mode ${mode} blocked before execution`,
+      },
+    })
+    setStatus(errorMessage(error, t('status.runBlocked')), 'error')
+    publishWorkflowRuntimeState()
+    return
+  }
   if (!runnable.length) {
     setStatus(t('status.noRunnable'), 'error')
     return
   }
 
+  const expandedFromNodeIds = mode === RUN_MODES.RUN_FROM_SELECTED
+    ? expandedUpstreamNodeIdsForSelected(state.workflowState, state.selectedNodeId, state.nodes, state.edges)
+    : []
+  resetRuntimeStateForRun(mode)
+  recordRuntimeEvent(createRunStartedEvent({
+    expandedFromNodeIds,
+    mode,
+    nodeCount: runnable.length,
+    selectedNodeId: mode === RUN_MODES.RUN_FROM_SELECTED ? state.selectedNodeId : null,
+  }))
   setStatus(t('status.running'), 'running')
   elements.runWorkflow.disabled = true
+  let halted = false
   try {
     for (const node of runnable) {
-      if (node.type === 'virtual') await runVirtualMachiningNode(node)
-      if (node.type === 'process') await runProcessNode(node)
+      const execution = await executeNode(node, state.workflowState, {
+        edges: state.edges,
+        fallback: runExistingNode,
+        humanReview: requestHumanReview,
+        nodes: state.nodes,
+        runners: {
+          arppl: runArpplNode,
+          virtualMachiningWallErrorPrediction: runVirtualMachiningNodeWithRuntimeState,
+          wallThicknessCompensation: runWallCompensationNodeWithRuntimeState,
+        },
+      })
+      state.workflowState = execution.state
+      if (execution.result?.state_patch?.parameter_patches?.length) {
+        markDirectDownstreamResultsStale(node.id, 'parameter patch list changed')
+      }
+      publishWorkflowRuntimeState()
+      if (execution.result?.control?.halt_after_node) {
+        halted = true
+        if (state.workflowState.status === 'running') {
+          state.workflowState = updateWorkflowState(
+            state.workflowState,
+            { status: 'paused' },
+            `Workflow paused after ${node.id}`,
+          )
+          publishWorkflowRuntimeState()
+        }
+        setStatus(execution.result.control.reason ?? t('status.ready'), 'ready')
+        break
+      }
       propagateFromNode(node.id)
       const output = node.groupId ? groupOutput(node.groupId) : null
       if (output) propagateFromNode(output.id)
     }
-    setStatus(t('status.done'), 'done')
+    if (!halted && state.workflowState.status === 'running') {
+      state.workflowState = updateWorkflowState(state.workflowState, { status: 'completed' }, 'Workflow status changed to completed')
+      recordRuntimeEvent({
+        event_type: 'run_completed',
+        summary: 'Workflow run completed',
+      })
+      setStatus(t('status.done'), 'done')
+    }
     renderGraph()
   } catch (error) {
+    if (error.workflowState) {
+      state.workflowState = error.workflowState
+      publishWorkflowRuntimeState()
+    }
+    state.workflowState = updateWorkflowState(state.workflowState, { status: 'failed' }, errorMessage(error, 'workflow failed'))
+    recordRuntimeEvent({
+      event_type: 'run_stopped',
+      summary: errorMessage(error, 'workflow failed'),
+      payload: { error: errorMessage(error, 'workflow failed') },
+    })
     setStatus(errorMessage(error, 'workflow failed'), 'error')
     renderGraph()
   } finally {
+    publishWorkflowRuntimeState()
     elements.runWorkflow.disabled = false
+  }
+}
+
+async function runExistingNode(node) {
+  if (node.type === 'virtual') {
+    await runVirtualMachiningNodeWithRuntimeState(node)
+    return
+  }
+  if (node.type === 'process') await runProcessNode(node)
+}
+
+async function runVirtualMachiningNodeWithRuntimeState(node, workflowState = state.workflowState) {
+  const runtimeNode = virtualNodeWithRuntimeProcessParameters(node, workflowState)
+  await runVirtualMachiningNode(runtimeNode)
+  node.data = clone(runtimeNode.data ?? null)
+  node.lastResponse = clone(runtimeNode.lastResponse ?? null)
+  node.virtualSceneReady = runtimeNode.virtualSceneReady
+  state.lastResponse = node.lastResponse
+}
+
+async function runWallCompensationNodeWithRuntimeState(node) {
+  applyLatestWallErrorToWallCompensationNode(node)
+  await runWallCompensationNode(node)
+}
+
+function applyLatestWallErrorToWallCompensationNode(node) {
+  if (node.processKind !== 'wall-thickness-compensation') return
+  const upstream = resolveUpstreamNodeResultOfType(state.workflowState, 'wall_error', {
+    consumerNodeId: node.id,
+    edges: state.edges,
+  })
+  const input = groupInput(node.groupId)
+  if (!upstream && upstreamNodeIds(node.id, state.edges).size) {
+    node.params.error_points = '[]'
+    if (input) input.data = null
+    return
+  }
+  const wallError = upstream?.result
+  const points = wallError?.wallErrorPoints ?? wallError?.points ?? wallError?.result?.points ?? []
+  if (!points.length) return
+  node.params.error_points = JSON.stringify(points, null, 2)
+  if (input) {
+    input.data = {
+      source: upstream?.nodeId ? `node_results.${upstream.nodeId}` : (wallError.source ?? 'runtime-state'),
+      type: 'wall_error',
+      wallErrorPoints: clone(points),
+    }
+  }
+}
+
+function requestHumanReview({ node, prompt }) {
+  if (typeof window === 'undefined' || typeof window.confirm !== 'function') return null
+  const approveLabel = node.params?.approveLabel ?? 'Approve'
+  const rejectLabel = node.params?.rejectLabel ?? 'Reject'
+  return window.confirm(`${prompt}\n\n${approveLabel}: OK\n${rejectLabel}: Cancel`) ? 'approved' : 'rejected'
+}
+
+function resetRuntimeStateForRun(mode = RUN_MODES.RUN_ALL) {
+  state.workflowState = prepareWorkflowStateForRunMode({
+    currentState: state.workflowState,
+    initialStateFactory: () => createInitialWorkflowState({
+      initial_process_parameter_base: createProcessParameterState(state.nodes),
+      node_context: Object.fromEntries(state.nodes.map((node) => [node.id, {
+        logicKind: node.logicKind ?? null,
+        params: clone(node.params ?? {}),
+        processKind: node.processKind ?? null,
+        type: node.type,
+      }])),
+      process_parameters: createProcessParameterState(state.nodes),
+      run_mode: mode,
+      status: 'running',
+      workflow_id: 'workflow-platform-canvas',
+      workpiece_state: currentWorkpieceStateSnapshot(),
+    }),
+    mode,
+  })
+  if (mode === RUN_MODES.RUN_FROM_SELECTED) {
+    state.workflowState = {
+      ...state.workflowState,
+      initial_process_parameter_base: createProcessParameterState(state.nodes),
+      node_context: {
+        ...(state.workflowState.node_context ?? {}),
+        ...Object.fromEntries(state.nodes.map((node) => [node.id, {
+          logicKind: node.logicKind ?? null,
+          params: clone(node.params ?? {}),
+          processKind: node.processKind ?? null,
+          type: node.type,
+        }])),
+      },
+      process_parameters: {
+        ...(state.workflowState.process_parameters ?? {}),
+        ...createProcessParameterState(state.nodes),
+      },
+      run_mode: mode,
+      workpiece_state: {
+        ...currentWorkpieceStateSnapshot(),
+        ...(state.workflowState.workpiece_state ?? {}),
+      },
+    }
+  }
+  publishWorkflowRuntimeState()
+}
+
+function recordRuntimeEvent(event) {
+  try {
+    state.workflowState = appendExecutionEvent(state.workflowState, createExecutionEvent({
+      ...event,
+      run_id: state.workflowState.run_id,
+    }))
+    publishWorkflowRuntimeState()
+  } catch (error) {
+    console.warn('Workflow runtime event recording failed', error)
+  }
+}
+
+function currentWorkpieceStateSnapshot() {
+  const virtualNodes = state.nodes.filter((node) => node.type === 'virtual' && node.data)
+  const latest = virtualNodes[virtualNodes.length - 1]
+  return latest ? { source_node_id: latest.id, result_type: latest.data?.type ?? null } : {}
+}
+
+function publishWorkflowRuntimeState() {
+  const exported = {
+    ...exportWorkflowState(state.workflowState),
+    virtual_node_runtime_parameters: virtualNodeRuntimeParameterViews(),
+  }
+  if (typeof window !== 'undefined') window.workflowRuntimeState = exported
+  renderEventLog(exported.event_log ?? [])
+  saveLatestSnapshotToLocalStorage()
+}
+
+function virtualNodeRuntimeParameterViews() {
+  return Object.fromEntries(
+    state.nodes
+      .filter((node) => node.type === 'virtual')
+      .map((node) => [node.id, virtualNodeRuntimeParameterView(node, state.workflowState)]),
+  )
+}
+
+function currentRunSnapshot() {
+  return createRunSnapshot({
+    appVersion: 'workflow-platform-frontend',
+    edges: state.edges,
+    nodes: state.nodes,
+    runMode: state.workflowState?.run_mode ?? RUN_MODES.RUN_ALL,
+    runtimeVersion: 'workflow-runtime-v0',
+    selectedNodeId: state.selectedNodeId,
+    workflowState: state.workflowState,
+  })
+}
+
+function exportCurrentRunSnapshot() {
+  const snapshot = currentRunSnapshot()
+  const json = JSON.stringify(snapshot, null, 2)
+  const filename = `${snapshot.workflow_state?.run_id ?? 'workflow-run'}-snapshot.json`
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+  setStatus(t('status.snapshotExported'), 'done')
+}
+
+async function importRunSnapshotFromFile() {
+  const file = elements.snapshotImportFile?.files?.[0]
+  if (!file) return
+  try {
+    const restored = restoreRunSnapshot(await file.text())
+    restoreRuntimeSnapshot(restored)
+    setStatus(t('status.snapshotImported'), 'done')
+  } catch (error) {
+    setStatus(`${t('status.snapshotImportFailed')}: ${errorMessage(error, 'invalid snapshot')}`, 'error')
+  } finally {
+    if (elements.snapshotImportFile) elements.snapshotImportFile.value = ''
+  }
+}
+
+function restoreRuntimeSnapshot(restored) {
+  state.nodes = restored.nodes
+  state.edges = restored.edges
+  state.selectedNodeId = restored.selectedNodeId
+  state.workflowState = {
+    ...restored.workflowState,
+    run_mode: restored.runMode ?? restored.workflowState?.run_mode ?? RUN_MODES.RESUME_FROM_SNAPSHOT,
+  }
+  state.connectingFrom = null
+  state.nodes
+    .filter((node) => node.type === 'virtual')
+    .forEach((node) => {
+      captureVirtualProcessBase(node)
+      node.virtualSceneReady = false
+    })
+  publishWorkflowRuntimeState()
+  renderGraph()
+}
+
+function renderEventLog(events = []) {
+  if (!elements.eventLogList || !elements.eventLogCount) return
+  const archivedRuns = state.workflowState?.run_history?.length ?? 0
+  elements.eventLogCount.textContent = archivedRuns
+    ? `${events.length} events (${archivedRuns} archived runs)`
+    : `${events.length} events`
+  elements.eventLogList.innerHTML = events.length
+    ? events.slice(-80).map((event) => {
+      const meta = eventLogMeta(event)
+      return `
+      <li>
+        <strong>${escapeHtml(event.event_type ?? 'event')}</strong>
+        <span>${escapeHtml(event.node_id ?? '-')}</span>
+        <time>${escapeHtml(event.timestamp ?? '')}</time>
+        <p>${escapeHtml(event.summary ?? '')}</p>
+        ${meta ? `<small>${escapeHtml(meta)}</small>` : ''}
+      </li>
+    `}).join('')
+    : `<li class="empty-event">${escapeHtml(t('result.empty'))}</li>`
+}
+
+function eventLogMeta(event) {
+  const payload = event.payload ?? {}
+  const parts = []
+  if (event.event_sequence) parts.push(`#${event.event_sequence}`)
+  if (event.result_version_id) parts.push(`result=${event.result_version_id}`)
+  if (payload.stale !== undefined) parts.push(`stale=${payload.stale}`)
+  if (payload.stale_reason) parts.push(`reason=${payload.stale_reason}`)
+  if (event.skip_reason) parts.push(`skip=${event.skip_reason}`)
+  if (event.base_version_after) parts.push(`base=${event.base_version_after}`)
+  if (event.patch_ids?.length) parts.push(`patch=${event.patch_ids.join(',')}`)
+  if (payload.input_fingerprint_summary?.block_id) parts.push(`block=${payload.input_fingerprint_summary.block_id}`)
+  return parts.join(' | ')
+}
+
+function markWorkflowResultsStale(nodeIds, reason) {
+  state.workflowState = markNodeAndDirectDownstreamResultsStale(
+    state.workflowState,
+    nodeIds,
+    state.edges,
+    reason,
+  )
+  publishWorkflowRuntimeState()
+}
+
+function markDirectDownstreamResultsStale(nodeId, reason) {
+  const downstreamIds = state.edges
+    .filter((edge) => edge.from === nodeId)
+    .map((edge) => edge.to)
+  if (!downstreamIds.length) return
+  state.workflowState = markNodeAndDirectDownstreamResultsStale(
+    state.workflowState,
+    downstreamIds,
+    [],
+    reason,
+  )
+}
+
+function staleRelevantNodeSnapshot(node) {
+  return {
+    data: clone(node.data ?? null),
+    files: Object.keys(node.files ?? {}).sort().reduce((next, key) => {
+      const file = node.files[key]
+      next[key] = file ? { name: file.name, size: file.size, type: file.type } : null
+      return next
+    }, {}),
+    logicKind: node.logicKind ?? null,
+    params: clone(node.params ?? {}),
+    processKind: node.processKind ?? null,
+    type: node.type ?? null,
+  }
+}
+
+function stableJson(value) {
+  return JSON.stringify(sortJsonValue(value))
+}
+
+function sortJsonValue(value) {
+  if (Array.isArray(value)) return value.map(sortJsonValue)
+  if (!value || typeof value !== 'object') return value
+  return Object.keys(value).sort().reduce((next, key) => {
+    const item = value[key]
+    if (item !== undefined) next[key] = sortJsonValue(item)
+    return next
+  }, {})
+}
+
+function saveLatestSnapshotToLocalStorage() {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem('workflow-latest-run-snapshot', JSON.stringify(currentRunSnapshot()))
+  } catch (error) {
+    console.warn('Snapshot localStorage save failed', error)
   }
 }
 
@@ -1802,7 +2476,17 @@ function runnableNodesForSelection() {
   const component = selected ? connectedComponent(selected.id) : new Set(state.nodes.map((node) => node.id))
   return topologicalNodeOrder()
     .filter((node) => component.has(node.id))
-    .filter((node) => node.type === 'virtual' || node.type === 'process')
+    .filter((node) => node.type === 'virtual' || node.type === 'process' || isLogicNode(node))
+}
+
+function runnableNodesForMode(mode = RUN_MODES.RUN_ALL) {
+  return executableNodesForRunMode({
+    edges: state.edges,
+    mode,
+    nodes: state.nodes,
+    selectedNodeId: state.selectedNodeId,
+    workflowState: state.workflowState,
+  })
 }
 
 function topologicalNodeOrder() {
@@ -2096,10 +2780,123 @@ function addVirtualMachiningNode(x, y, options = {}) {
     x,
     y,
   }
+  captureVirtualProcessBase(node)
   state.nodes.push(node)
   if (options.select !== false) state.selectedNodeId = id
   if (options.render !== false) renderGraph()
   return node
+}
+
+function addLogicNode(logicKind, x, y, options = {}) {
+  const definition = logicNodeDefinition(logicKind)
+  const id = nextNodeId(definition.kind)
+  const node = {
+    data: null,
+    id,
+    lastResponse: null,
+    logicKind: definition.kind,
+    params: clone(definition.defaultParameters),
+    type: 'logic',
+    x,
+    y,
+  }
+  state.nodes.push(node)
+  if (options.select !== false) state.selectedNodeId = id
+  if (options.render !== false) renderGraph()
+  return node
+}
+
+function loadClosedLoopDemo() {
+  state.nodes = []
+  state.edges = []
+  state.connectingFrom = null
+
+  const connect = (from, to) => {
+    state.edges = addWorkflowEdge(state.edges, { from, to })
+  }
+  const configureVirtual = (node, index) => {
+    node.params = {
+      ...node.params,
+      process: {
+        ...node.params.process,
+        ...(CLOSED_LOOP_DEMO.virtual_parameter_sets[index] ?? {}),
+      },
+      stiffness_file_name: DEFAULT_STIFFNESS_FILE_NAME,
+      stiffness_file_path_hint: CLOSED_LOOP_DEMO.stiffness_file_path,
+    }
+    captureVirtualProcessBase(node, { overwrite: true })
+  }
+  const configureUpdate = (node) => {
+    node.params = {
+      ...node.params,
+      sourcePath: 'compensation_plan.radial_depth_delta',
+      targetPath: 'process_parameters.radial_depth',
+      updateMode: 'add',
+    }
+  }
+
+  const virtualA = addVirtualMachiningNode(80, 120, { render: false, select: false })
+  const conditionA = addLogicNode('condition', 360, 120, { render: false, select: false })
+  const wtcA = addProcessGroup(processRegistryByKind('wall-thickness-compensation'), 620, 120, { render: false, select: false })
+  const parameterUpdateA = addLogicNode('parameter-update', 1460, 120, { render: false, select: false })
+  const virtualB = addVirtualMachiningNode(1740, 120, { render: false, select: false })
+  const conditionB = addLogicNode('condition', 2020, 120, { render: false, select: false })
+  const wtcB = addProcessGroup(processRegistryByKind('wall-thickness-compensation'), 2280, 120, { render: false, select: false })
+  const parameterUpdateB = addLogicNode('parameter-update', 3120, 120, { render: false, select: false })
+  const virtualC = addVirtualMachiningNode(3400, 120, { render: false, select: false })
+  const stop = addLogicNode('stop', 3680, 120, { render: false, select: false })
+
+  const parameterUpdateBranch = addLogicNode('parameter-update', 3120, 430, { render: false, select: false })
+  const virtualD = addVirtualMachiningNode(3400, 430, { render: false, select: false })
+
+  ;[virtualA, virtualB, virtualC, virtualD].forEach(configureVirtual)
+
+  conditionA.params = {
+    ...conditionA.params,
+    metricPath: 'max_wall_error',
+    operator: '>',
+    threshold: '0.05',
+  }
+  conditionB.params = {
+    ...conditionB.params,
+    metricPath: 'max_wall_error',
+    operator: '>',
+    threshold: '0.03',
+  }
+  ;[parameterUpdateA, parameterUpdateB, parameterUpdateBranch].forEach(configureUpdate)
+  const wtcBProcess = findNode(wtcB.processId)
+  if (wtcBProcess) wtcBProcess.params.method = 'first_order'
+  stop.params = {
+    ...stop.params,
+    maxIterations: '1',
+    metricPath: 'max_wall_error',
+    stopReason: 'closed-loop convergence check',
+    tolerance: '0.02',
+  }
+
+  connect(virtualA.id, conditionA.id)
+  connect(conditionA.id, wtcA.inputId)
+  connect(wtcA.outputId, parameterUpdateA.id)
+  connect(parameterUpdateA.id, virtualB.id)
+  connect(virtualB.id, conditionB.id)
+  connect(conditionB.id, wtcB.inputId)
+  connect(wtcB.outputId, parameterUpdateB.id)
+  connect(parameterUpdateB.id, virtualC.id)
+  connect(virtualC.id, stop.id)
+
+  connect(wtcB.outputId, parameterUpdateBranch.id)
+  connect(parameterUpdateBranch.id, virtualD.id)
+
+  state.selectedNodeId = virtualA.id
+  arrangeCanvasNodes()
+  state.workflowState = createInitialWorkflowState({
+    initial_process_parameter_base: createProcessParameterState(state.nodes),
+    process_parameters: createProcessParameterState(state.nodes),
+    workflow_id: CLOSED_LOOP_DEMO.name,
+  })
+  publishWorkflowRuntimeState()
+  renderGraph()
+  setStatus(t('status.demoLoaded'), 'done')
 }
 
 function buildVirtualPredictionRequest(params) {
@@ -2192,6 +2989,7 @@ function outputPayloadForNode(node) {
 
 function nodeOutputType(node) {
   if (!node) return null
+  if (isLogicNode(node)) return 'logic_control'
   if (node.type === 'virtual') return 'wall_error'
   if (node.type === 'processInput' || node.type === 'process' || node.type === 'processOutput') {
     const registry = processRegistryByKind(node.processKind)
@@ -2202,6 +3000,7 @@ function nodeOutputType(node) {
 
 function nodeInputTypes(node) {
   if (!node) return []
+  if (isLogicNode(node)) return ['point_cloud_pair', 'pose', 'wall_error', 'compensation_plan', 'process_params', 'logic_control']
   if (node.type === 'virtual') return ['process_params', 'compensation_plan', 'pose']
   if (node.type === 'processInput') {
     if (node.processKind === 'wall-thickness-compensation') return ['wall_error']
@@ -2213,11 +3012,11 @@ function nodeInputTypes(node) {
 }
 
 function hasInputPort(node) {
-  return nodeInputTypes(node).length > 0 || node.type === 'process' || node.type === 'processOutput'
+  return isLogicNode(node) || nodeInputTypes(node).length > 0 || node.type === 'process' || node.type === 'processOutput'
 }
 
 function hasOutputPort(node) {
-  return node.type === 'virtual' || node.type === 'processInput' || node.type === 'process' || node.type === 'processOutput'
+  return isLogicNode(node) || node.type === 'virtual' || node.type === 'processInput' || node.type === 'process' || node.type === 'processOutput'
 }
 
 function wallErrorPointsForInput(node) {
@@ -2396,6 +3195,14 @@ function selectedProcessKind() {
   return selectedProcessNode()?.processKind ?? null
 }
 
+function isLogicNode(node) {
+  return node?.type === 'logic'
+}
+
+function logicNodeDefinition(kind) {
+  return LOGIC_NODE_DEFINITIONS[kind] ?? LOGIC_NODE_DEFINITIONS.condition
+}
+
 function selectedNode() {
   return findNode(state.selectedNodeId)
 }
@@ -2469,6 +3276,26 @@ function textField(id, label, value, mode = '') {
     <label>
       <span>${escapeHtml(label)}</span>
       <input id="${escapeHtml(id)}" value="${escapeHtml(value ?? '')}"${readonly} />
+    </label>
+  `
+}
+
+function textAreaField(id, label, value) {
+  return `
+    <label>
+      <span>${escapeHtml(label)}</span>
+      <textarea id="${escapeHtml(id)}" spellcheck="false">${escapeHtml(value ?? '')}</textarea>
+    </label>
+  `
+}
+
+function selectField(id, label, value, options) {
+  return `
+    <label>
+      <span>${escapeHtml(label)}</span>
+      <select id="${escapeHtml(id)}">
+        ${options.map((option) => `<option value="${escapeHtml(option)}" ${value === option ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
+      </select>
     </label>
   `
 }
@@ -3362,6 +4189,12 @@ function formatNumber(value) {
   return numeric.toPrecision(4)
 }
 
+function formatParameterValue(value, fallback = '--') {
+  if (value == null || value === '') return fallback
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? formatNumber(numeric) : String(value)
+}
+
 function formatCount(value) {
   const numeric = Number(value)
   return Number.isFinite(numeric) ? numeric.toLocaleString() : t('field.unknown')
@@ -3462,7 +4295,7 @@ function defaultWallErrorPoints() {
 }
 
 function defaultStiffnessPoints() {
-  return defaultWallErrorPoints().map(({ error, ...point }) => point)
+  return defaultVirtualStiffnessPoints()
 }
 
 function defaultVirtualMachiningParameters() {
@@ -3483,7 +4316,8 @@ function defaultVirtualMachiningParameters() {
       radial_depth: '1.0',
       spindle_speed: '7200',
     },
-    stiffness_file_name: '',
+    stiffness_file_name: DEFAULT_STIFFNESS_FILE_NAME,
+    stiffness_file_path_hint: DEFAULT_STIFFNESS_FILE_PATH,
     tool: {
       cutter_length: '10',
       diameter: '4.0',

@@ -48,11 +48,23 @@
               <strong id="graphStatus" data-i18n="status.ready">Ready</strong>
             </div>
             <div class="toolbar-actions">
+              <select id="logicNodeKind" class="toolbar-select" aria-label="Logic node type">
+                <option value="condition">condition</option>
+                <option value="stop">stop / convergence</option>
+                <option value="parameter-update">parameter-update</option>
+                <option value="human-review">human-review</option>
+              </select>
+              <button id="addLogicNode" class="secondary" type="button" data-i18n="actions.addLogic">Add Logic Node</button>
               <button id="addVirtualNode" class="secondary" type="button" data-i18n="actions.addVirtual">Add Virtual Node</button>
+              <button id="loadClosedLoopDemo" class="secondary" type="button" data-i18n="actions.loadClosedLoopDemo">Load Closed-loop Demo</button>
+              <button id="exportRunSnapshot" class="secondary" type="button" data-i18n="actions.exportSnapshot">Export Snapshot</button>
+              <button id="importRunSnapshot" class="secondary" type="button" data-i18n="actions.importSnapshot">Import Snapshot</button>
+              <input id="snapshotImportFile" class="hidden-file-input" type="file" accept="application/json,.json">
               <button id="clearLinks" class="secondary" type="button" data-i18n="actions.clearLinks">Clear Links</button>
               <button id="resetLayout" class="secondary" type="button" data-i18n="actions.resetLayout">Reset Layout</button>
               <button id="openNodeConfig" class="secondary" type="button" data-i18n="actions.configure">Configure Node</button>
               <button id="openStandalone" class="secondary" type="button" data-i18n="actions.openApp">Open App</button>
+              <button id="runFromSelected" class="secondary" type="button" data-i18n="actions.runFromSelected">Run From Selected</button>
               <button id="runWorkflow" type="button" data-i18n="actions.run">Run Workflow</button>
             </div>
           </div>
@@ -82,6 +94,17 @@
               </div>
               <ol id="virtualMachiningLog" class="virtual-log" aria-label="virtual machining log"></ol>
             </div>
+          </section>
+
+          <section class="runtime-panel">
+            <div class="panel-title">
+              <span data-i18n="runtime.label">Run Snapshot</span>
+              <strong id="eventLogCount">0 events</strong>
+            </div>
+            <details open>
+              <summary data-i18n="runtime.eventLog">Event Log</summary>
+              <ol id="eventLogList" class="event-log-list" aria-label="execution event log"></ol>
+            </details>
           </section>
 
           <section class="inspector">
