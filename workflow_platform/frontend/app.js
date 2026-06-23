@@ -14,6 +14,11 @@ import {
 } from './runtime/workflowStiffnessDefaults.js'
 import { buildUnityMachiningJobPayload } from './runtime/unityPreviewAdapter.js'
 import {
+  WORKPIECE_PRESETS,
+  defaultWorkpieceParams,
+  parseToolpathText,
+} from './runtime/virtualMachiningNodeConfig.js'
+import {
   RUN_MODES,
   createRunStartedEvent,
   executableNodesForRunMode,
@@ -38,6 +43,15 @@ import {
   markNodeAndDirectDownstreamResultsStale,
   updateWorkflowState,
 } from './runtime/workflowExecutionCore.js'
+import {
+  activateVisualizationSession,
+  addVisualizationSession,
+  completeVisualizationSession,
+  createVisualizationSession,
+  failVisualizationSession,
+  latestVisualizationSessionForNode,
+  visualizationSessionDiagnostics,
+} from './runtime/workflowVisualizationSessions.js'
 import * as THREE from 'three'
 import { OrbitControls } from './vendor/OrbitControls.js'
 
@@ -663,6 +677,8 @@ function handleCatalogDrop(event) {
 }
 
 function renderGraph() {
+  const displayLabels = workflowNodeDisplayLabels()
+  const activePreview = activeVisualizationSession()
   const nodesHtml = state.nodes
     .map((node) => {
       const spec = nodeSpec(node)
@@ -679,12 +695,14 @@ function renderGraph() {
         `node-${node.type}`,
         state.selectedNodeId === node.id ? 'active' : '',
         state.connectingFrom === node.id ? 'connecting' : '',
+        activePreview?.virtual_node_id === node.id ? 'preview-active' : '',
       ].filter(Boolean).join(' ')
+      const displayLabel = displayLabels.get(node.id) ?? ''
       return `
         <article class="${classes}" data-node="${node.id}" ${dataAttrs} style="left:${node.x}px; top:${node.y}px">
           ${hasInputPort(node) ? `<button class="port port-in" type="button" data-node="${node.id}" data-port="in" aria-label="${escapeHtml(t('edge.to'))}"></button>` : ''}
           ${hasOutputPort(node) ? `<button class="port port-out" type="button" data-node="${node.id}" data-port="out" aria-label="${escapeHtml(t('edge.from'))}"></button>` : ''}
-          <span>${escapeHtml(spec.label)}</span>
+          <span><b class="node-sequence">${escapeHtml(displayLabel)}</b>${escapeHtml(spec.label)}</span>
           <strong title="${escapeHtml(spec.name)}">${escapeHtml(spec.name)}</strong>
           <small>${escapeHtml(spec.meta)}</small>
           <div class="node-tags">${spec.tags.filter(Boolean).map((tag) => `<em>${escapeHtml(tag)}</em>`).join('')}</div>
@@ -758,6 +776,8 @@ function nodeSpec(node) {
     const runtimeView = virtualNodeRuntimeParameterView(node, state.workflowState)
     const designRadial = runtimeView?.design_parameters?.radial_depth
     const executionRadial = runtimeView?.execution_parameters?.radial_depth
+    const previewSession = latestVisualizationSessionForNode(state.workflowState, node.id)
+    const activePreview = state.workflowState?.active_visualization_session_id === previewSession?.visualization_session_id
     return {
       label: t('node.virtual'),
       meta: t('node.virtualMeta'),
@@ -767,6 +787,7 @@ function nodeSpec(node) {
         executionRadial == null
           ? `base ae ${formatParameterValue(designRadial)} mm`
           : `run ae ${formatParameterValue(executionRadial)} mm`,
+        previewSession ? (activePreview ? 'preview active' : 'preview ready') : '',
         `${points.length || 0} ${t('field.points')}`,
       ],
     }
@@ -1104,16 +1125,22 @@ function virtualInspectorHtml(node) {
   const runtimeView = virtualNodeRuntimeParameterView(node, state.workflowState)
   const executionRadial = runtimeView?.execution_parameters?.radial_depth
   const sourcePatchIds = runtimeView?.source_patch_ids ?? []
+  const previewSession = latestVisualizationSessionForNode(state.workflowState, node.id)
+  const activePreview = state.workflowState?.active_visualization_session_id === previewSession?.visualization_session_id
   return `
     <section class="inspector-section">
       <h2>${escapeHtml(t('node.virtualName'))}</h2>
       <dl class="kv-list">
+        <dt>Workflow label</dt><dd>${escapeHtml(workflowNodeDisplayLabel(node))}</dd>
+        <dt>Node ID</dt><dd>${escapeHtml(node.id)}</dd>
         <dt>${escapeHtml(t('param.modelVersion'))}</dt><dd>${escapeHtml(node.params.model_version)}</dd>
         <dt>${escapeHtml(t('param.material'))}</dt><dd>${escapeHtml(node.params.material.name)}</dd>
         <dt>Design radial depth</dt><dd>${escapeHtml(formatParameterValue(runtimeView?.design_parameters?.radial_depth))} mm</dd>
         <dt>Execution radial depth</dt><dd data-runtime-radial-depth="${escapeHtml(executionRadial ?? '')}">${escapeHtml(formatParameterValue(executionRadial, 'not run yet'))}${executionRadial == null ? '' : ' mm'}</dd>
         <dt>Runtime base</dt><dd>${escapeHtml(runtimeView?.base_version_id ?? 'not run yet')}</dd>
         <dt>Source patches</dt><dd>${escapeHtml(sourcePatchIds.length ? sourcePatchIds.join(', ') : 'none')}</dd>
+        <dt>Preview session</dt><dd>${escapeHtml(previewSession ? `${previewSession.visualization_session_id} (${activePreview ? 'active' : previewSession.status})` : 'not ready')}</dd>
+        <dt>Preview source</dt><dd>${escapeHtml(previewSession ? visualizationSessionDiagnostics(previewSession) : 'not ready')}</dd>
         <dt>${escapeHtml(t('files.stiffness'))}</dt><dd>${escapeHtml(node.params.stiffness_file_name || t('files.unselected'))}</dd>
         <dt>${escapeHtml(t('field.points'))}</dt><dd>${escapeHtml(points.length)}</dd>
       </dl>
@@ -1489,6 +1516,7 @@ function renderVirtualDialog(node) {
   const keyPoints = parseVirtualKeyPoints(node.params.key_points)
   const selectedMaterialId = node.params.material_id || node.params.material.name
   const selectedToolId = node.params.tool_id || node.params.tool.type
+  const selectedWorkpiecePresetId = node.params.workpiece_preset_id || 'default-thinwall'
   elements.dialogBody.innerHTML = `
     <nav class="virtual-config-tabs" aria-label="virtual machining sections">
       <button class="active" type="button" data-virtual-tab="geometry">${escapeHtml(t('virtual.tabGeometry'))}</button>
@@ -1503,6 +1531,14 @@ function renderVirtualDialog(node) {
           <h3>${escapeHtml(t('virtual.tabGeometry'))}</h3>
           <span data-geometry-summary>${escapeHtml(workpieceSummaryText(dimensions ?? fallbackWorkpieceDimensions()))}</span>
         </div>
+        <label>
+          <span>Workpiece preset</span>
+          <select id="vmWorkpiecePreset">
+            ${WORKPIECE_PRESETS.map((preset) => `
+              <option value="${escapeHtml(preset.id)}" ${selectedWorkpiecePresetId === preset.id ? 'selected' : ''}>${escapeHtml(preset.label)}</option>
+            `).join('')}
+          </select>
+        </label>
         <div class="form-grid-two">
           ${textField('vmLength', `${t('param.length')} L`, node.params.workpiece.length)}
           ${textField('vmHeight', `${t('param.height')} H1`, node.params.workpiece.height)}
@@ -1576,6 +1612,18 @@ function renderVirtualDialog(node) {
             <option value="up_milling" ${node.params.process.cutting_mode === 'up_milling' ? 'selected' : ''}>up_milling</option>
           </select>
         </label>
+        <div class="stiffness-import-row">
+          <button class="secondary" type="button" data-dialog-action="importToolpath">Import toolpath</button>
+          <input id="vmToolpathFile" type="file" accept=".json,.txt" />
+          <span id="vmToolpathFileName">${escapeHtml(node.params.toolpath_file_name || t('files.unselected'))}</span>
+        </div>
+        <details class="help-card">
+          <summary>Toolpath JSON</summary>
+          <label>
+            <span>toolpath</span>
+            <textarea id="vmToolpathJson" spellcheck="false">${escapeHtml(node.params.toolpath ? JSON.stringify(node.params.toolpath, null, 2) : '')}</textarea>
+          </label>
+        </details>
       </section>
 
       <section class="virtual-config-panel" data-virtual-panel="stiffness">
@@ -1790,6 +1838,11 @@ function saveProcessDialogValues(node) {
 function saveVirtualDialogValues(node) {
   const keyPoints = JSON.parse(valueFromInput('#vmKeyPoints', node.params.key_points))
   if (!Array.isArray(keyPoints)) throw new Error('Stiffness points JSON must be an array.')
+  const toolpathText = valueFromInput('#vmToolpathJson', '')
+  const toolpath = toolpathText ? parseToolpathText(toolpathText) : null
+  const toolpathFileName = document.querySelector('#vmToolpathFileName')?.textContent === t('files.unselected')
+    ? ''
+    : document.querySelector('#vmToolpathFileName')?.textContent ?? node.params.toolpath_file_name ?? ''
   node.virtualSceneReady = false
   node.params = {
     ...node.params,
@@ -1825,9 +1878,12 @@ function saveVirtualDialogValues(node) {
       base_width: valueFromInput('#vmBaseWidth', '64'),
       base_height: valueFromInput('#vmBaseHeight', '16'),
     },
+    workpiece_preset_id: document.querySelector('#vmWorkpiecePreset')?.value ?? node.params.workpiece_preset_id ?? 'default-thinwall',
     stiffness_file_name: document.querySelector('#vmStiffnessFileName')?.textContent === t('files.unselected')
       ? ''
       : document.querySelector('#vmStiffnessFileName')?.textContent ?? node.params.stiffness_file_name,
+    toolpath,
+    toolpath_file_name: toolpath ? toolpathFileName : '',
     tool_id: document.querySelector('#vmToolSelect')?.value ?? node.params.tool_id,
   }
   captureVirtualProcessBase(node, { overwrite: true })
@@ -1906,6 +1962,7 @@ async function runWorkflow(mode = RUN_MODES.RUN_ALL) {
         },
       })
       state.workflowState = execution.state
+      if (node.type === 'virtual') registerVirtualVisualizationSession(node, execution.result)
       if (execution.result?.state_patch?.parameter_patches?.length) {
         markDirectDownstreamResultsStale(node.id, 'parameter patch list changed')
       }
@@ -1970,6 +2027,62 @@ async function runVirtualMachiningNodeWithRuntimeState(node, workflowState = sta
   node.lastResponse = clone(runtimeNode.lastResponse ?? null)
   node.virtualSceneReady = runtimeNode.virtualSceneReady
   state.lastResponse = node.lastResponse
+}
+
+function registerVirtualVisualizationSession(node, executionResult) {
+  const result = executionResult?.result ?? node.data ?? {}
+  const rawResult = executionResult?.raw_response?.result ?? node.lastResponse?.result ?? {}
+  const basePayload = result.materialRemovalPreview
+    ?? result.material_removal_preview
+    ?? rawResult.material_removal_preview
+    ?? rawResult.materialRemovalPreview
+    ?? null
+  if (!basePayload) return null
+
+  const resultVersion = executionResult?.result_version ?? {}
+  const nodeResultVersionId = executionResult?.result_version_id
+    ?? resultVersion.node_result_version_id
+    ?? null
+  const payload = {
+    ...clone(basePayload),
+    node_display_label: workflowNodeDisplayLabel(node),
+    node_result_version_id: nodeResultVersionId,
+    parameter_base_version_id: resultVersion.parameter_base_version_id ?? null,
+    source_node_id: node.id,
+    visualization_source: {
+      node_display_label: workflowNodeDisplayLabel(node),
+      node_id: node.id,
+      node_result_version_id: nodeResultVersionId,
+    },
+  }
+  const session = createVisualizationSession({
+    created_by: 'workflow_auto_run',
+    node_display_label: workflowNodeDisplayLabel(node),
+    node_result_version_id: nodeResultVersionId,
+    parameter_base_version_id: resultVersion.parameter_base_version_id ?? null,
+    scene_payload: result.scenePayload ?? result.scene_payload ?? rawResult.scene_payload ?? null,
+    status: 'ready',
+    unity_payload: payload,
+    virtual_node_id: node.id,
+  })
+
+  state.workflowState = addVisualizationSession(state.workflowState, session)
+  recordRuntimeEvent({
+    event_type: 'visualization_session_created',
+    node_id: node.id,
+    node_type: node.type,
+    payload: {
+      node_display_label: session.node_display_label,
+      node_result_version_id: session.node_result_version_id,
+      parameter_base_version_id: session.parameter_base_version_id,
+      payload_summary: session.payload_summary,
+      state_change_summary: visualizationSessionDiagnostics(session),
+      visualization_session_id: session.visualization_session_id,
+    },
+    summary: `Visualization session ready: ${session.visualization_session_id}`,
+  })
+  node.previewSessionId = session.visualization_session_id
+  return session
 }
 
 async function runWallCompensationNodeWithRuntimeState(node) {
@@ -2176,6 +2289,8 @@ function eventLogMeta(event) {
   const parts = []
   if (event.event_sequence) parts.push(`#${event.event_sequence}`)
   if (event.result_version_id) parts.push(`result=${event.result_version_id}`)
+  if (payload.visualization_session_id) parts.push(`preview=${payload.visualization_session_id}`)
+  if (payload.node_display_label) parts.push(`label=${payload.node_display_label}`)
   if (payload.stale !== undefined) parts.push(`stale=${payload.stale}`)
   if (payload.stale_reason) parts.push(`reason=${payload.stale_reason}`)
   if (event.skip_reason) parts.push(`skip=${event.skip_reason}`)
@@ -2408,17 +2523,8 @@ async function runVirtualMachiningNode(node) {
     ...request,
     key_points: parseVirtualKeyPoints(node.params.key_points),
   }
-  const unityMessages = []
-
-  try {
-    await state.virtualMachining.load()
-    await state.virtualMachining.loadScene(scenePayload)
-    node.virtualSceneReady = true
-    unityMessages.push('scene sent')
-  } catch (error) {
-    node.virtualSceneReady = false
-    unityMessages.push(errorMessage(error, 'Unity scene load skipped'))
-  }
+  const unityMessages = ['preview session ready; manual Preview Cutting required']
+  node.virtualSceneReady = false
 
   let body
   const mode = 'virtual-machining-platform'
@@ -2437,9 +2543,11 @@ async function runVirtualMachiningNode(node) {
   const points = body.points ?? []
   const materialRemovalPreview = buildMaterialRemovalPreviewPayload(request, points, {
     source_node_id: node.id,
+    toolpath: node.params.toolpath,
   })
   node.data = {
     materialRemovalPreview,
+    scenePayload,
     source: node.id,
     summary: body.summary,
     type: 'wall_error',
@@ -2453,6 +2561,7 @@ async function runVirtualMachiningNode(node) {
       material_removal_preview: materialRemovalPreview,
       model_version: body.model_version ?? request.model_version,
       points,
+      scene_payload: scenePayload,
       summary: body.summary,
       unity_messages: unityMessages,
     },
@@ -2460,18 +2569,6 @@ async function runVirtualMachiningNode(node) {
     trace_id: `platform-${Date.now()}`,
   }
   state.lastResponse = node.lastResponse
-
-  try {
-    if (!node.virtualSceneReady) {
-      await state.virtualMachining.loadScene(scenePayload)
-      node.virtualSceneReady = true
-      unityMessages.push('scene sent')
-    }
-    await state.virtualMachining.startMaterialRemovalPreview(materialRemovalPreview)
-    unityMessages.push('cutting preview sent')
-  } catch (error) {
-    unityMessages.push(errorMessage(error, 'Unity cutting preview skipped'))
-  }
 }
 
 function runnableNodesForSelection() {
@@ -3106,33 +3203,79 @@ async function sendLastResultToVirtualMachining() {
 async function previewSelectedVirtualCutting() {
   const node = selectedNode()
   if (!node || node.type !== 'virtual') return
-  const points = node.data?.wallErrorPoints ?? []
-  if (!points.some((point) => Number.isFinite(Number(point.error)))) {
+  const session = latestVisualizationSessionForNode(state.workflowState, node.id)
+  const points = session?.unity_payload?.points ?? node.data?.wallErrorPoints ?? []
+  if (!session || !points.some((point) => Number.isFinite(Number(point.error)))) {
     setStatus(t('param.previewCutting'), 'error')
     return
   }
   try {
-    const request = buildVirtualPredictionRequest(node.params)
-    const scenePayload = {
+    state.workflowState = activateVisualizationSession(state.workflowState, session.visualization_session_id)
+    recordRuntimeEvent({
+      event_type: 'visualization_preview_started',
+      node_id: node.id,
+      node_type: node.type,
+      payload: {
+        node_display_label: session.node_display_label,
+        node_result_version_id: session.node_result_version_id,
+        payload_summary: session.payload_summary,
+        state_change_summary: visualizationSessionDiagnostics(session),
+        visualization_session_id: session.visualization_session_id,
+      },
+      summary: `Unity preview started: ${session.visualization_session_id}`,
+    })
+    setStatus(`Previewing ${visualizationSessionDiagnostics(session)}`, 'running')
+    const scenePayload = session.scene_payload ?? {
       source: 'workflow_platform',
       type: 'virtual_machining_scene',
-      ...request,
+      ...buildVirtualPredictionRequest(node.params),
       key_points: parseVirtualKeyPoints(node.params.key_points),
     }
-    const payload = buildMaterialRemovalPreviewPayload(request, points, {
-      source_node_id: node.id,
+    await state.virtualMachining.loadScene(scenePayload)
+    state.nodes
+      .filter((candidate) => candidate.type === 'virtual')
+      .forEach((candidate) => {
+        candidate.virtualSceneReady = candidate.id === node.id
+      })
+    await state.virtualMachining.startMaterialRemovalPreview(session.unity_payload)
+    state.workflowState = completeVisualizationSession(state.workflowState, session.visualization_session_id)
+    recordRuntimeEvent({
+      event_type: 'visualization_preview_completed',
+      node_id: node.id,
+      node_type: node.type,
+      payload: {
+        node_display_label: session.node_display_label,
+        node_result_version_id: session.node_result_version_id,
+        payload_summary: session.payload_summary,
+        state_change_summary: visualizationSessionDiagnostics(session),
+        visualization_session_id: session.visualization_session_id,
+      },
+      summary: `Unity preview completed: ${session.visualization_session_id}`,
     })
-    if (!node.virtualSceneReady) {
-      await state.virtualMachining.loadScene(scenePayload)
-      node.virtualSceneReady = true
-    }
-    await state.virtualMachining.startMaterialRemovalPreview(payload)
     const messages = node.lastResponse?.result?.unity_messages
     if (Array.isArray(messages)) messages.push('cutting preview sent')
     setStatus(t('status.done'), 'done')
-    renderInspector()
+    publishWorkflowRuntimeState()
+    renderGraph()
   } catch (error) {
+    state.workflowState = failVisualizationSession(state.workflowState, session.visualization_session_id, {
+      error: errorMessage(error, 'Unity cutting preview failed'),
+    })
+    recordRuntimeEvent({
+      event_type: 'visualization_preview_failed',
+      node_id: node.id,
+      node_type: node.type,
+      payload: {
+        error: errorMessage(error, 'Unity cutting preview failed'),
+        node_display_label: session.node_display_label,
+        node_result_version_id: session.node_result_version_id,
+        visualization_session_id: session.visualization_session_id,
+      },
+      summary: errorMessage(error, 'Unity cutting preview failed'),
+    })
     setStatus(errorMessage(error, 'Unity cutting preview failed'), 'error')
+    publishWorkflowRuntimeState()
+    renderGraph()
   }
 }
 
@@ -3217,6 +3360,23 @@ function processRegistryByKind(kind) {
 function nodeLabel(nodeId) {
   const node = findNode(nodeId)
   return node ? nodeSpec(node).name : nodeId
+}
+
+function workflowNodeDisplayLabels() {
+  return new Map(topologicalNodeOrder().map((node, index) => [node.id, `#${index + 1}`]))
+}
+
+function workflowNodeDisplayLabel(node) {
+  if (!node) return ''
+  const displayLabel = workflowNodeDisplayLabels().get(node.id) ?? ''
+  return `${displayLabel} ${nodeSpec(node).name}`.trim()
+}
+
+function activeVisualizationSession() {
+  const activeId = state.workflowState?.active_visualization_session_id
+  if (!activeId) return null
+  return (state.workflowState.visualization_sessions ?? [])
+    .find((session) => session.visualization_session_id === activeId) ?? null
 }
 
 function pathExists(fromId, toId, visited = new Set()) {
@@ -3331,8 +3491,11 @@ function toolPreviewHtml(toolId) {
 function bindVirtualDialogInteractions(node) {
   const materialSelect = document.querySelector('#vmMaterialSelect')
   const toolSelect = document.querySelector('#vmToolSelect')
+  const workpiecePresetSelect = document.querySelector('#vmWorkpiecePreset')
   const stiffnessFile = document.querySelector('#vmStiffnessFile')
+  const toolpathFile = document.querySelector('#vmToolpathFile')
   const importButton = document.querySelector('[data-dialog-action="importStiffness"]')
+  const importToolpathButton = document.querySelector('[data-dialog-action="importToolpath"]')
   const dimensionInputs = ['#vmLength', '#vmHeight', '#vmThickness', '#vmBaseWidth', '#vmBaseHeight']
     .map((selector) => document.querySelector(selector))
     .filter(Boolean)
@@ -3371,6 +3534,21 @@ function bindVirtualDialogInteractions(node) {
     renderVirtualDialogPreviews()
   })
 
+  workpiecePresetSelect?.addEventListener('change', () => {
+    const workpiece = defaultWorkpieceParams(workpiecePresetSelect.value)
+    setInputValue('#vmLength', workpiece.length)
+    setInputValue('#vmHeight', workpiece.height)
+    setInputValue('#vmThickness', workpiece.thickness)
+    setInputValue('#vmBaseWidth', workpiece.base_width)
+    setInputValue('#vmBaseHeight', workpiece.base_height)
+    const dimensions = parseWorkpieceDimensionsFromDialog()
+    const summary = document.querySelector('[data-preview-summary]')
+    if (summary) summary.textContent = dimensions ? workpieceSummaryText(dimensions) : t('field.unknown')
+    const geometrySummary = document.querySelector('[data-geometry-summary]')
+    if (geometrySummary) geometrySummary.textContent = dimensions ? workpieceSummaryText(dimensions) : t('field.unknown')
+    renderVirtualDialogPreviews()
+  })
+
   importButton?.addEventListener('click', () => stiffnessFile?.click())
   stiffnessFile?.addEventListener('change', async () => {
     const file = stiffnessFile.files?.[0]
@@ -3388,6 +3566,25 @@ function bindVirtualDialogInteractions(node) {
       setStatus(errorMessage(error, 'stiffness import failed'), 'error')
     } finally {
       stiffnessFile.value = ''
+    }
+  })
+
+  importToolpathButton?.addEventListener('click', () => toolpathFile?.click())
+  toolpathFile?.addEventListener('change', async () => {
+    const file = toolpathFile.files?.[0]
+    if (!file) return
+    try {
+      const text = await readTextFile(file)
+      const toolpath = parseToolpathText(text)
+      setInputValue('#vmToolpathJson', JSON.stringify(toolpath, null, 2))
+      const fileName = document.querySelector('#vmToolpathFileName')
+      if (fileName) fileName.textContent = file.name
+      node.params.toolpath = toolpath
+      node.params.toolpath_file_name = file.name
+    } catch (error) {
+      setStatus(errorMessage(error, 'toolpath import failed'), 'error')
+    } finally {
+      toolpathFile.value = ''
     }
   })
 
@@ -4315,13 +4512,10 @@ function defaultVirtualMachiningParameters() {
       type: 'flat_end_mill',
     },
     tool_id: 'flat_end_mill',
-    workpiece: {
-      base_height: '16',
-      base_width: '64',
-      height: '56',
-      length: '120',
-      thickness: '3',
-    },
+    toolpath: null,
+    toolpath_file_name: '',
+    workpiece: defaultWorkpieceParams('default-thinwall'),
+    workpiece_preset_id: 'default-thinwall',
   }
 }
 

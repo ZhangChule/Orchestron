@@ -20,6 +20,7 @@ export function createInitialWorkflowState(workflow = {}) {
     runtime_metrics: cloneValue(workflow.runtime_metrics ?? {}),
     status: workflow.status ?? 'idle',
     updated_at: timestamp,
+    visualization_sessions: cloneValue(workflow.visualization_sessions ?? []),
     workflow_id: workflow.workflow_id ?? createWorkflowId(),
     workpiece_state: cloneValue(workflow.workpiece_state ?? {}),
   }

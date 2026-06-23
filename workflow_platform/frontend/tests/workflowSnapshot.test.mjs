@@ -21,6 +21,12 @@ test('createRunSnapshot exports graph, WorkflowState, results, metrics, paramete
     run_id: 'run-a',
     runtime_metrics: { max_wall_error: 0.12 },
     status: 'completed',
+    visualization_sessions: [{
+      node_result_version_id: 'result-version-1',
+      status: 'ready',
+      virtual_node_id: 'virtual-1',
+      visualization_session_id: 'vis-1',
+    }],
     workflow_id: 'workflow-a',
   }
 
@@ -53,6 +59,7 @@ test('createRunSnapshot exports graph, WorkflowState, results, metrics, paramete
   assert.deepEqual(snapshot.node_result_versions, workflowState.node_result_versions)
   assert.deepEqual(snapshot.runtime_metrics, workflowState.runtime_metrics)
   assert.deepEqual(snapshot.process_parameters, workflowState.process_parameters)
+  assert.deepEqual(snapshot.visualization_sessions, workflowState.visualization_sessions)
   assert.deepEqual(snapshot.event_log, workflowState.event_log)
 })
 
@@ -90,6 +97,7 @@ test('parseRunSnapshot accepts JSON text and restoreRunSnapshot returns graph pl
       run_id: 'run-a',
       runtime_metrics: { max_wall_error: 0.04 },
       status: 'paused',
+      visualization_sessions: [{ virtual_node_id: 'a', visualization_session_id: 'vis-a' }],
       workflow_id: 'workflow-a',
     },
   }))
@@ -106,6 +114,7 @@ test('parseRunSnapshot accepts JSON text and restoreRunSnapshot returns graph pl
   assert.deepEqual(restored.workflowState.parameter_base_versions.map((item) => item.base_version_id), ['base-a'])
   assert.deepEqual(restored.workflowState.parameter_patches.map((item) => item.patch_id), ['patch-a'])
   assert.deepEqual(restored.workflowState.node_result_versions.map((item) => item.node_result_version_id), ['result-version-a'])
+  assert.deepEqual(restored.workflowState.visualization_sessions.map((item) => item.visualization_session_id), ['vis-a'])
 })
 
 test('restoreRunSnapshot backfills P1 dataflow arrays for old snapshots', () => {
@@ -136,6 +145,7 @@ test('restoreRunSnapshot backfills P1 dataflow arrays for old snapshots', () => 
   assert.deepEqual(restored.workflowState.initial_process_parameter_base, {})
   assert.deepEqual(restored.workflowState.parameter_patches, [])
   assert.deepEqual(restored.workflowState.node_result_versions, [])
+  assert.deepEqual(restored.workflowState.visualization_sessions, [])
 })
 
 test('restoreRunSnapshot accepts legacy snapshots without schema_version', () => {
@@ -161,6 +171,7 @@ test('restoreRunSnapshot accepts legacy snapshots without schema_version', () =>
   assert.deepEqual(restored.workflowState.parameter_base_versions, [])
   assert.deepEqual(restored.workflowState.parameter_patches, [])
   assert.deepEqual(restored.workflowState.node_result_versions, [])
+  assert.deepEqual(restored.workflowState.visualization_sessions, [])
   assert.equal(restored.workflowState.node_results.legacy.result, true)
 })
 

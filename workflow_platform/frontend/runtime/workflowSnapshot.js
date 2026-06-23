@@ -23,6 +23,7 @@ export function createRunSnapshot(input = {}, options = {}) {
     runtime_metrics: cloneValue(workflowState.runtime_metrics ?? {}),
     schema_version: SNAPSHOT_SCHEMA_VERSION,
     timestamp,
+    visualization_sessions: cloneValue(workflowState.visualization_sessions ?? []),
     workflow_graph: {
       edges: cloneValue(input.edges ?? []),
       nodes: cloneValue(input.nodes ?? []),
@@ -57,6 +58,7 @@ export function restoreRunSnapshot(snapshot) {
     process_parameters: cloneValue(parsed.workflow_state?.process_parameters ?? parsed.process_parameters ?? {}),
     run_history: cloneValue(parsed.workflow_state?.run_history ?? parsed.run_history ?? []),
     runtime_metrics: cloneValue(parsed.workflow_state?.runtime_metrics ?? parsed.runtime_metrics ?? {}),
+    visualization_sessions: cloneValue(parsed.workflow_state?.visualization_sessions ?? parsed.visualization_sessions ?? []),
   })
 
   return {
@@ -87,6 +89,7 @@ function normalizeWorkflowState(workflowState) {
     run_history: cloneValue(cloned.run_history ?? []),
     run_mode: cloned.run_mode ?? 'run_all',
     runtime_metrics: cloneValue(cloned.runtime_metrics ?? {}),
+    visualization_sessions: cloneValue(cloned.visualization_sessions ?? []),
   }
 }
 

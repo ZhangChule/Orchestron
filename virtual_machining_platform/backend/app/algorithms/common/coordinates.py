@@ -56,12 +56,9 @@ def coordinate_from_matrix_index(
     I 表示径向多次走刀，从壁厚中心 t/2 开始按径向切深递减。
     """
     i_count, j_count, k_count = shape
-    _ = i_count
-    x = workpiece.length * index.k / (k_count - 1) if k_count > 1 else workpiece.length * 0.5
-    z = (
-        workpiece.height - (workpiece.height - workpiece.base_height) * index.j / (j_count - 1)
-        if j_count > 1
-        else workpiece.height
-    )
-    y = max(-workpiece.thickness * 0.5, workpiece.thickness * 0.5 - index.i * radial_depth)
+    _ = i_count, radial_depth
+    x = - ( workpiece.length * index.k / (k_count - 1) if k_count > 1 else workpiece.length * 0.5 )
+    wall_height = workpiece.height - workpiece.base_height
+    z = wall_height * (1 - index.j / (j_count - 1)) if j_count > 1 else wall_height
+    y = -57 - (6 - workpiece.thickness)
     return x, y, z

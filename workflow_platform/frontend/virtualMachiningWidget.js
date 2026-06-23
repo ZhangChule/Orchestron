@@ -1,6 +1,7 @@
 const UNITY_BASE_URL = './virtual-machining/UnityBuild'
 const UNITY_BUILD_URL = `${UNITY_BASE_URL}/Build`
-const UNITY_LOADER_URL = `${UNITY_BUILD_URL}/UnityBuild.loader.js`
+const UNITY_BUILD_CACHE_VERSION = 'workflow-unity-interface-integration-v1'
+const UNITY_LOADER_URL = versionedUnityAssetUrl(`${UNITY_BUILD_URL}/UnityBuild.loader.js`)
 const UNITY_LOADER_SCRIPT_ID = 'orchestron-unity-loader'
 const UNITY_BRIDGE_OBJECT = 'FrontendBridge'
 const EDITABLE_SELECTOR = "input, textarea, select, [contenteditable='true'], [contenteditable='']"
@@ -46,9 +47,9 @@ export function createVirtualMachiningWidget({ canvas, status, progress, log }) 
 
       releaseUnityKeyboardCapture(null, canvas)
       const config = await prepareUnityConfig({
-        dataUrl: `${UNITY_BUILD_URL}/UnityBuild.data.gz`,
-        frameworkUrl: `${UNITY_BUILD_URL}/UnityBuild.framework.js.gz`,
-        codeUrl: `${UNITY_BUILD_URL}/UnityBuild.wasm.gz`,
+        dataUrl: versionedUnityAssetUrl(`${UNITY_BUILD_URL}/UnityBuild.data.gz`),
+        frameworkUrl: versionedUnityAssetUrl(`${UNITY_BUILD_URL}/UnityBuild.framework.js.gz`),
+        codeUrl: versionedUnityAssetUrl(`${UNITY_BUILD_URL}/UnityBuild.wasm.gz`),
         streamingAssetsUrl: `${UNITY_BASE_URL}/StreamingAssets`,
         companyName: 'DefaultCompany',
         productName: 'CutSim',
@@ -218,8 +219,9 @@ export function createVirtualMachiningWidget({ canvas, status, progress, log }) 
         writeLog('Unity machining completed.')
       }
     }
-    window.addEventListener('UnityMachiningCompleted', handler)
-    return () => window.removeEventListener('UnityMachiningCompleted', handler)
+    const eventNames = ['UnityMachiningCompleted', 'UnityMaterialRemovalPreviewCompleted']
+    eventNames.forEach((eventName) => window.addEventListener(eventName, handler))
+    return () => eventNames.forEach((eventName) => window.removeEventListener(eventName, handler))
   }
 
   async function prepareUnityConfig(config) {
@@ -279,6 +281,11 @@ export function createVirtualMachiningWidget({ canvas, status, progress, log }) 
     log.prepend(line)
     while (log.children.length > 8) log.lastElementChild?.remove()
   }
+}
+
+function versionedUnityAssetUrl(url) {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${encodeURIComponent(UNITY_BUILD_CACHE_VERSION)}`
 }
 
 function ensureUnityLoader() {

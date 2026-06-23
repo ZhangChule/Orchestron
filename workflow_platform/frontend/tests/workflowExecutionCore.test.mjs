@@ -48,6 +48,7 @@ test('createInitialWorkflowState returns the requested minimal WorkflowState sha
     runtime_metrics: {},
     status: 'idle',
     updated_at: '2026-06-13T00:00:00.000Z',
+    visualization_sessions: [],
     workflow_id: 'workflow-a',
     workpiece_state: {},
   })
