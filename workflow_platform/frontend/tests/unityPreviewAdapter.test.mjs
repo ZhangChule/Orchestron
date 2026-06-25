@@ -42,11 +42,11 @@ test('buildUnityMachiningJobPayload creates a StartMachiningJob payload with too
     stiffness: 266.9,
     x: 39,
     y: 60,
-    z: 12,
+    z: -12,
   })
 })
 
-test('buildUnityMachiningJobPayload keeps backend x on positive Unity z like the validated thinwall preview app', () => {
+test('buildUnityMachiningJobPayload keeps backend x on the validated Unity z sign convention', () => {
   const payload = buildUnityMachiningJobPayload({
     points: [
       { id: 'K1_J1_I1', x: 0, y: 3, z: 55, stiffness: 352.1, error: 0.083 },
@@ -75,8 +75,9 @@ test('buildUnityMachiningJobPayload keeps backend x on positive Unity z like the
     },
   })
 
-  assert.deepEqual(payload.points.map((point) => point.z), [0, 120])
-  assert.ok(payload.points.every((point) => point.z >= 0 && point.z <= 128))
+  assert.equal(Math.abs(payload.points[0].z), 0)
+  assert.equal(payload.points[1].z, -120)
+  assert.ok(payload.points.every((point) => point.z <= 0 && point.z >= -128))
 })
 
 test('buildUnityMachiningJobPayload preserves a supplied operation-level toolpath', () => {

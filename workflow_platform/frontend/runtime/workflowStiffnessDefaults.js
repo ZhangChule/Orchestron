@@ -10,6 +10,8 @@ export const DEFAULT_STIFFNESS_VALUES = Object.freeze([
   213.8579983,
 ])
 
+export const DEFAULT_STIFFNESS_AVERAGE = DEFAULT_STIFFNESS_VALUES.reduce((sum, value) => sum + value, 0) / DEFAULT_STIFFNESS_VALUES.length
+
 export function defaultVirtualStiffnessPoints() {
   return DEFAULT_STIFFNESS_VALUES.map((stiffness, index) => ({
     colIndex: index,

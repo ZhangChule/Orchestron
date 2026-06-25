@@ -37,7 +37,8 @@ def predict_wall_error(request: WallErrorPredictionRequest) -> WallErrorPredicti
     # 前端传入的径向切深在后端被视为名义 ae。傅里叶标定使用 ae 的 +/-50%
     # 采样范围，先暂时和参考脚本保持一致；标定后的模型会复用于所有刚度测点。
     radial_depth = request.process.radial_depth
-    radial_depth_samples = radial_depth * np.linspace(0.5, 1.5, 5)
+    fallback_radial_depth = request.process.radial_depth
+    radial_depth_samples = fallback_radial_depth * np.linspace(0.5, 1.5, 5)
     defaults = MechanisticDefaults()
 
     # 切削力仿真和傅里叶线性标定只依赖刀具、工艺和标定切深，不依赖单个测点刚度。
@@ -65,6 +66,7 @@ def predict_wall_error(request: WallErrorPredictionRequest) -> WallErrorPredicti
     mass_debug = []
     results: list[KeyPointResult] = []
     for point in request.key_points:
+        point_radial_depth = point.execution_radial_depth or fallback_radial_depth
         # 这里是“前端矩阵索引”变成“后端工件坐标”的边界，所以显式保留
         # id 解析和坐标映射，方便后续核对刚度点是否对应到正确位置。
         index = parse_matrix_point_id(point.id)
@@ -72,9 +74,16 @@ def predict_wall_error(request: WallErrorPredictionRequest) -> WallErrorPredicti
             index=index,
             shape=shape,
             workpiece=workpiece,
-            radial_depth=radial_depth,
+            radial_depth=point_radial_depth,
         )
-        coordinate_debug.append({"id": point.id, "x": x, "y": y, "z": z, "stiffness": point.stiffness})
+        coordinate_debug.append({
+            "id": point.id,
+            "x": x,
+            "y": y,
+            "z": z,
+            "stiffness": point.stiffness,
+            "execution_radial_depth": point_radial_depth,
+        })
         mass = mass_kg_from_stiffness(point.stiffness, DEFAULT_NATURAL_FREQUENCY_HZ, DEFAULT_DAMPING_RATIO)
         mass_debug.append({"id": point.id, "stiffness": point.stiffness, "mass_kg": mass})
         # 每个测点使用自己的刚度进入求解器：求解器会反算模态质量、求一周期稳态响应，
@@ -82,7 +91,7 @@ def predict_wall_error(request: WallErrorPredictionRequest) -> WallErrorPredicti
         error = solve_wall_error(
             force_model=force_model,
             stiffness=point.stiffness,
-            nominal_radial_depth=radial_depth,
+            nominal_radial_depth=point_radial_depth,
             damping_ratio=DEFAULT_DAMPING_RATIO,
             natural_frequency_hz=DEFAULT_NATURAL_FREQUENCY_HZ,
             tool_radius=request.tool.diameter * 0.5,
@@ -103,7 +112,14 @@ def predict_wall_error(request: WallErrorPredictionRequest) -> WallErrorPredicti
     debug_log("prediction.stiffness_mass", mass_debug)
     debug_log(
         "prediction.wall_errors",
-        [{"id": point.id, "error": point.error} for point in results],
+        [
+            {
+                "id": result.id,
+                "error": result.error,
+                "execution_radial_depth": point.execution_radial_depth or fallback_radial_depth,
+            }
+            for point, result in zip(request.key_points, results, strict=False)
+        ],
     )
 
     return WallErrorPredictionResponse(

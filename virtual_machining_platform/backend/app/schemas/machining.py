@@ -50,6 +50,7 @@ class KeyPointInput(BaseModel):
     # Frontend uploads stiffness-only points; coordinates are filled by backend.
     id: str
     stiffness: float = Field(gt=0)
+    execution_radial_depth: float | None = Field(default=None, gt=0)
 
 
 class KeyPointResult(BaseModel):

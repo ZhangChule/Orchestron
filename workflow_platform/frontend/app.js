@@ -8,11 +8,20 @@ import {
   upstreamNodeIds,
 } from './runtime/workflowResultResolution.js'
 import {
+  DEFAULT_STIFFNESS_AVERAGE,
   DEFAULT_STIFFNESS_FILE_NAME,
   DEFAULT_STIFFNESS_FILE_PATH,
   defaultVirtualStiffnessPoints,
 } from './runtime/workflowStiffnessDefaults.js'
+import { averageStiffnessFromText } from './runtime/stiffnessAverage.js'
 import { buildUnityMachiningJobPayload } from './runtime/unityPreviewAdapter.js'
+import {
+  buildThicknessSemanticsForPrediction,
+  normalizeCompensationWorkflowResponse,
+  postprocessWallErrorPointsForDesignSurface,
+  requestWithCompatibleRadialDepth,
+  summarizeDesignSurfaceError,
+} from './runtime/virtualMachiningThicknessSemantics.js'
 import {
   WORKPIECE_PRESETS,
   defaultWorkpieceParams,
@@ -430,6 +439,10 @@ const processRegistry = [
       method: 'stiffness_based',
       radial_depth: '1.0',
       model_version: 'v1.0',
+      reference_average_stiffness: String(DEFAULT_STIFFNESS_AVERAGE),
+      milling_average_stiffness: String(DEFAULT_STIFFNESS_AVERAGE),
+      reference_stiffness_file_name: DEFAULT_STIFFNESS_FILE_NAME,
+      milling_stiffness_file_name: DEFAULT_STIFFNESS_FILE_NAME,
       error_points: JSON.stringify(defaultWallErrorPoints(), null, 2),
     },
   },
@@ -1192,6 +1205,8 @@ function processInspectorHtml(node) {
           <dt>${escapeHtml(t('param.compMethod'))}</dt><dd>${escapeHtml(node.params.method)}</dd>
           <dt>${escapeHtml(t('param.radialDepth'))}</dt><dd>${escapeHtml(node.params.radial_depth)} mm</dd>
           <dt>${escapeHtml(t('param.modelVersion'))}</dt><dd>${escapeHtml(node.params.model_version)}</dd>
+          <dt>reference_average_stiffness</dt><dd>${escapeHtml(formatParameterValue(node.params.reference_average_stiffness))}</dd>
+          <dt>milling_average_stiffness</dt><dd>${escapeHtml(formatParameterValue(node.params.milling_average_stiffness))}</dd>
         </dl>
         <div class="button-row">
           <button type="button" data-action="configure">${escapeHtml(t('actions.configure'))}</button>
@@ -1497,6 +1512,18 @@ function renderWallCompensationProcessDialog(node) {
       </label>
       ${textField('dialogRadialDepth', t('param.radialDepth'), node.params.radial_depth)}
       ${textField('dialogModelVersion', t('param.modelVersion'), node.params.model_version)}
+      ${textField('dialogReferenceAverageStiffness', 'reference_average_stiffness', node.params.reference_average_stiffness)}
+      <div class="button-row">
+        <button class="secondary" type="button" id="dialogReferenceStiffnessImport">Read reference stiffness file</button>
+        <span id="dialogReferenceStiffnessFileName">${escapeHtml(node.params.reference_stiffness_file_name || t('files.unselected'))}</span>
+      </div>
+      <input id="dialogReferenceStiffnessFile" type="file" accept=".txt,.csv" hidden />
+      ${textField('dialogMillingAverageStiffness', 'milling_average_stiffness', node.params.milling_average_stiffness)}
+      <div class="button-row">
+        <button class="secondary" type="button" id="dialogMillingStiffnessImport">Read milling stiffness file</button>
+        <span id="dialogMillingStiffnessFileName">${escapeHtml(node.params.milling_stiffness_file_name || t('files.unselected'))}</span>
+      </div>
+      <input id="dialogMillingStiffnessFile" type="file" accept=".txt,.csv" hidden />
     </section>
     <section class="dialog-params">
       <details class="help-card" open>
@@ -1507,6 +1534,7 @@ function renderWallCompensationProcessDialog(node) {
   `
   elements.dialogFooter.innerHTML = dialogProcessFooter()
   bindDialogActions()
+  bindWallCompensationDialogInteractions(node)
 }
 
 function renderVirtualDialog(node) {
@@ -1739,6 +1767,51 @@ function bindDialogBodyActions() {
   })
 }
 
+function bindWallCompensationDialogInteractions(node) {
+  bindWallCompensationStiffnessImport({
+    buttonSelector: '#dialogReferenceStiffnessImport',
+    fileSelector: '#dialogReferenceStiffnessFile',
+    inputSelector: '#dialogReferenceAverageStiffness',
+    fileNameSelector: '#dialogReferenceStiffnessFileName',
+    node,
+    nodeAverageKey: 'reference_average_stiffness',
+    nodeFileKey: 'reference_stiffness_file_name',
+  })
+  bindWallCompensationStiffnessImport({
+    buttonSelector: '#dialogMillingStiffnessImport',
+    fileSelector: '#dialogMillingStiffnessFile',
+    inputSelector: '#dialogMillingAverageStiffness',
+    fileNameSelector: '#dialogMillingStiffnessFileName',
+    node,
+    nodeAverageKey: 'milling_average_stiffness',
+    nodeFileKey: 'milling_stiffness_file_name',
+  })
+}
+
+function bindWallCompensationStiffnessImport(config) {
+  const button = document.querySelector(config.buttonSelector)
+  const fileInput = document.querySelector(config.fileSelector)
+  button?.addEventListener('click', () => fileInput?.click())
+  fileInput?.addEventListener('change', async () => {
+    const file = fileInput.files?.[0]
+    if (!file) return
+    try {
+      const averageStiffness = averageStiffnessFromText(await readTextFile(file))
+      const value = formatStiffnessAverageValue(averageStiffness)
+      setInputValue(config.inputSelector, value)
+      const fileName = document.querySelector(config.fileNameSelector)
+      if (fileName) fileName.textContent = file.name
+      config.node.params[config.nodeAverageKey] = value
+      config.node.params[config.nodeFileKey] = file.name
+      setStatus(`stiffness average loaded: ${value}`, 'ready')
+    } catch (error) {
+      setStatus(errorMessage(error, 'stiffness average import failed'), 'error')
+    } finally {
+      fileInput.value = ''
+    }
+  })
+}
+
 function saveSelectedDialogValues() {
   const node = selectedNode()
   if (!node) return
@@ -1818,6 +1891,14 @@ function saveProcessDialogValues(node) {
       method: document.querySelector('#dialogCompMethod')?.value ?? 'stiffness_based',
       model_version: valueFromInput('#dialogModelVersion', 'v1.0'),
       radial_depth: valueFromInput('#dialogRadialDepth', '1.0'),
+      reference_average_stiffness: valueFromInput('#dialogReferenceAverageStiffness', ''),
+      milling_average_stiffness: valueFromInput('#dialogMillingAverageStiffness', ''),
+      reference_stiffness_file_name: document.querySelector('#dialogReferenceStiffnessFileName')?.textContent === t('files.unselected')
+        ? ''
+        : document.querySelector('#dialogReferenceStiffnessFileName')?.textContent ?? node.params.reference_stiffness_file_name ?? '',
+      milling_stiffness_file_name: document.querySelector('#dialogMillingStiffnessFileName')?.textContent === t('files.unselected')
+        ? ''
+        : document.querySelector('#dialogMillingStiffnessFileName')?.textContent ?? node.params.milling_stiffness_file_name ?? '',
     }
     return
   }
@@ -2372,6 +2453,21 @@ async function runProcessNode(node) {
 async function runWallCompensationNode(node) {
   const points = wallErrorPointsForProcess(node)
   if (!points.length) throw new Error('Wall error points are required.')
+  const payload = {
+    method: node.params.method,
+    model_version: node.params.model_version,
+    points,
+    radial_depth: numberValue(node.params.radial_depth, 1),
+  }
+  if (node.params.method === 'stiffness_based') {
+    const referenceAverageStiffness = numberOrNull(node.params.reference_average_stiffness)
+    const millingAverageStiffness = numberOrNull(node.params.milling_average_stiffness)
+    if (referenceAverageStiffness == null || millingAverageStiffness == null) {
+      throw new Error('reference_average_stiffness and milling_average_stiffness are required for stiffness_based compensation.')
+    }
+    payload.reference_average_stiffness = referenceAverageStiffness
+    payload.milling_average_stiffness = millingAverageStiffness
+  }
   let body
   try {
     const response = await fetch(`${normalizeApiBase(node.apiBase)}/workflow/run`, {
@@ -2380,18 +2476,14 @@ async function runWallCompensationNode(node) {
       body: JSON.stringify({
         node_id: node.manifest?.id ?? 'wall-thickness-compensation',
         trace_id: `platform-${Date.now()}`,
-        payload: {
-          method: node.params.method,
-          model_version: node.params.model_version,
-          points,
-          radial_depth: numberValue(node.params.radial_depth, 1),
-        },
+        payload,
       }),
     })
     body = await parseJsonResponse(response)
   } catch (error) {
     body = localCompensationWorkflow(node, points, error)
   }
+  body = normalizeCompensationWorkflowResponse(body)
   node.lastResponse = body
   node.data = {
     plan: body.result?.compensation_plan,
@@ -2407,17 +2499,20 @@ function localCompensationWorkflow(node, points, sourceError) {
   const averageError = average(errors) ?? 0
   let suggestion
   if (node.params.method === 'mirror') {
-    suggestion = -averageError
+    suggestion = averageError
   } else {
     const denominator = Math.abs(radialDepth - averageError) < 1e-12 ? radialDepth : radialDepth - averageError
     const multiplier = radialDepth / denominator
     if (node.params.method === 'first_order') {
-      suggestion = -(multiplier * averageError)
+      suggestion = multiplier * averageError
     } else {
-      const stiffnessValues = points.map((point) => Number(point.stiffness)).filter(Number.isFinite)
-      const averageStiffness = average(stiffnessValues) ?? 1
-      const correctionDenominator = 1 - averageStiffness / (averageStiffness * 0.85) + multiplier
-      suggestion = Math.abs(correctionDenominator) < 1e-12 ? -averageError : -(multiplier / correctionDenominator) * averageError
+      const referenceAverageStiffness = numberOrNull(node.params.reference_average_stiffness)
+      const millingAverageStiffness = numberOrNull(node.params.milling_average_stiffness)
+      if (referenceAverageStiffness == null || millingAverageStiffness == null) {
+        throw new Error('reference_average_stiffness and milling_average_stiffness are required for stiffness_based compensation.')
+      }
+      const correctionDenominator = 1 - referenceAverageStiffness / millingAverageStiffness + multiplier
+      suggestion = Math.abs(correctionDenominator) < 1e-12 ? averageError : (multiplier / correctionDenominator) * averageError
     }
   }
   return {
@@ -2516,7 +2611,35 @@ async function runArpplJsonWorkflow(node) {
 }
 
 async function runVirtualMachiningNode(node) {
-  const request = buildVirtualPredictionRequest(node.params)
+  const initialRequest = buildVirtualPredictionRequest(node.params)
+  const authoredThicknessSemantics = node.params.thickness_semantics ?? node.params.thicknessSemantics ?? {}
+  const thicknessSemanticsConfig = {
+    ...authoredThicknessSemantics,
+    compensation_value: node.params.compensation_value
+      ?? node.params.compensationValue
+      ?? authoredThicknessSemantics.compensation_value
+      ?? authoredThicknessSemantics.compensationValue,
+    current_thickness_field: node.params.current_thickness_field
+      ?? node.params.currentThicknessField
+      ?? authoredThicknessSemantics.current_thickness_field
+      ?? authoredThicknessSemantics.currentThicknessField,
+    design_surface_thickness: node.params.design_surface_thickness
+      ?? node.params.designSurfaceThickness
+      ?? authoredThicknessSemantics.design_surface_thickness
+      ?? authoredThicknessSemantics.designSurfaceThickness,
+    execution_surface_thickness: node.params.execution_surface_thickness
+      ?? node.params.executionSurfaceThickness
+      ?? authoredThicknessSemantics.execution_surface_thickness
+      ?? authoredThicknessSemantics.executionSurfaceThickness,
+  }
+  const thicknessSemantics = buildThicknessSemanticsForPrediction({
+    design_process: node.processParameterBase ?? node.params.process,
+    key_points: initialRequest.key_points,
+    process: initialRequest.process,
+    thickness_semantics: thicknessSemanticsConfig,
+    workpiece: initialRequest.workpiece,
+  })
+  const request = requestWithCompatibleRadialDepth(initialRequest, thicknessSemantics)
   const scenePayload = {
     source: 'workflow_platform',
     type: 'virtual_machining_scene',
@@ -2540,16 +2663,21 @@ async function runVirtualMachiningNode(node) {
     throw new Error(`Virtual machining wall-error prediction failed. ${reason}`)
   }
 
-  const points = body.points ?? []
+  const rawPoints = body.points ?? []
+  const points = postprocessWallErrorPointsForDesignSurface(rawPoints, thicknessSemantics)
+  const designSurfaceSummary = summarizeDesignSurfaceError(points)
   const materialRemovalPreview = buildMaterialRemovalPreviewPayload(request, points, {
     source_node_id: node.id,
     toolpath: node.params.toolpath,
   })
   node.data = {
     materialRemovalPreview,
+    rawWallErrorPoints: rawPoints,
     scenePayload,
     source: node.id,
     summary: body.summary,
+    designSurfaceSummary,
+    thicknessSemantics,
     type: 'wall_error',
     wallErrorPoints: points,
   }
@@ -2560,9 +2688,12 @@ async function runVirtualMachiningNode(node) {
       message: body.message,
       material_removal_preview: materialRemovalPreview,
       model_version: body.model_version ?? request.model_version,
+      raw_points: rawPoints,
       points,
       scene_payload: scenePayload,
+      design_surface_error_summary: designSurfaceSummary,
       summary: body.summary,
+      thickness_semantics: thicknessSemantics,
       unity_messages: unityMessages,
     },
     status: 'succeeded',
@@ -4371,6 +4502,12 @@ function formatNumber(value) {
   if (Math.abs(numeric) >= 1) return numeric.toFixed(4)
   if (numeric === 0) return '0'
   return numeric.toPrecision(4)
+}
+
+function formatStiffnessAverageValue(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return ''
+  return String(Number(numeric.toPrecision(12)))
 }
 
 function formatParameterValue(value, fallback = '--') {

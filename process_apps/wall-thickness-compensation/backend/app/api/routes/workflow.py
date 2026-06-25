@@ -21,6 +21,8 @@ def manifest() -> dict:
         "inputs": [
             {"name": "method", "type": "string", "default": "stiffness_based"},
             {"name": "radial_depth", "type": "number", "unit": "mm"},
+            {"name": "reference_average_stiffness", "type": "number", "unit": "N/mm"},
+            {"name": "milling_average_stiffness", "type": "number", "unit": "N/mm"},
             {"name": "points", "type": "array", "item": "error_point"},
         ],
         "outputs": [

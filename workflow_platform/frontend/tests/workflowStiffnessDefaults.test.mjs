@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  DEFAULT_STIFFNESS_AVERAGE,
   DEFAULT_STIFFNESS_FILE_NAME,
   DEFAULT_STIFFNESS_FILE_PATH,
   defaultVirtualStiffnessPoints,
@@ -12,6 +13,7 @@ test('defaultVirtualStiffnessPoints mirrors the six-point stiffness.txt baseline
 
   assert.equal(DEFAULT_STIFFNESS_FILE_NAME, 'stiffness.txt')
   assert.equal(DEFAULT_STIFFNESS_FILE_PATH, 'D:\\PhD\\ARPPL_code\\process_apps\\thinwall-dt\\frontend\\public\\stiffness.txt')
+  assert.ok(Math.abs(DEFAULT_STIFFNESS_AVERAGE - 407.7824362166667) < 1e-12)
   assert.deepEqual(points.map((point) => point.id), [
     'K1_J1_I1',
     'K2_J1_I1',

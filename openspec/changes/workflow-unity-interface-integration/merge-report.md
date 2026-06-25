@@ -96,16 +96,71 @@ workflow_platform/frontend/virtualMachiningWidget.js
 作用：
 
 - `buildMaterialRemovalPreviewPayload()` 改为调用 `buildUnityMachiningJobPayload()`；
-- `startMaterialRemovalPreview()` 作为前端内部兼容入口，实际发送 `StartMachiningJob`；
+- `startMaterialRemovalPreview()` 作为前端内部兼容入口，实际发送 workflow Docker 当前服务的 `StartMachiningJob`；
+- `StartMaterialRemovalPreview` 只作为历史 thinwall-dt 原型入口参考，不再用于 workflow 手动切削预览；
 - 增加 `ImportTriDexelImage` / `ExportTriDexelImage` / `SetWorkpieceTransformMatrix` 方法映射；
-- 监听 `UnityMachiningCompleted`，暂存 tri-dexel 返回数据，但不进入 geometry contract。
+- 同时监听 `UnityMachiningCompleted` 和 `UnityMaterialRemovalPreviewCompleted`，暂存 tri-dexel 返回数据，但不进入 geometry contract。
 
 ## 当前未完成项
 
 - 还没有完整 preview session UI；
 - 还没有把 `triDexelImageBase64` 纳入 WorkflowState / Artifact；
 - 还没有实现 voxel / tri-dexel / geometry_artifact contract；
-- 还没有手动 Docker + 浏览器 Unity smoke test。
+- 还没有完成多节点 preview session UI/UX 设计落地。
+
+## 后续补充：toolpath 文件入口与新工件预设
+
+为便于测试新版 `StartMachiningJob`，已在 Virtual Machining 节点配置中增加：
+
+- 工艺参数页的 `Import toolpath` 文件入口；
+- 可编辑的 `Toolpath JSON`；
+- 新工件预设：
+
+```text
+L=120mm
+H1=55mm
+T=6mm
+W=120mm
+H2=15mm
+```
+
+toolpath 文件会被解析为 Unity 说明文件中的 `toolpath` 结构，并随 Virtual Machining 节点的 Unity payload 传入。未导入 toolpath 时继续使用默认轨迹。
+
+## Preview Cutting 兼容修复
+
+用户在 operation demo 工件、`stiffness3.1.txt` 和 `process1.txt` 下执行 `Preview Cutting` 后看到 `Maximum call stack size exceeded`。检查发现 workflow Docker 实际服务的是 `virtual_machining_platform/UnityBuild`，该包包含新版 `StartMachiningJob`；改用历史 `StartMaterialRemovalPreview` 入口会进入 Unity wasm 侧并触发栈溢出。
+
+修复策略：
+
+- 不修改 Unity Build；
+- 不修改 workflow execution core；
+- 不修改 `/prediction/wall-error`；
+- 手动 `Preview Cutting` 发送 `FrontendBridge.StartMachiningJob`；
+- `StartMaterialRemovalPreview` 不再作为 workflow 手动 preview 的发送入口；
+- Unity 完成事件同时兼容 `UnityMachiningCompleted` 与 `UnityMaterialRemovalPreviewCompleted`。
+
+## UnityCache / IndexedDB 缓存处理
+
+在全新浏览器 profile 下执行单 Virtual Machining 节点 smoke test 时，operation demo 工件、`stiffness3.1.txt` 和 `process1.txt` 能正常触发 `StartMachiningJob`，Unity console 输出 `[FrontendBridge] Machining job started.`，没有 `Maximum call stack size exceeded`。
+
+这说明用户浏览器继续报栈溢出时，很可能仍在复用旧 Unity WebGL 缓存。为避免 rebuild 后仍加载旧 Build，workflow widget 对以下资源追加固定版本参数：
+
+```text
+UnityBuild.loader.js?v=workflow-unity-interface-integration-v1
+UnityBuild.data.gz?v=workflow-unity-interface-integration-v1
+UnityBuild.framework.js.gz?v=workflow-unity-interface-integration-v1
+UnityBuild.wasm.gz?v=workflow-unity-interface-integration-v1
+```
+
+真实 smoke test 结果：
+
+```text
+Run all: 执行成功
+Preview Cutting: SendMessage FrontendBridge.StartMachiningJob
+Unity status: Unity ready
+Console: no RangeError captured
+Canvas: Unity scene visible with workpiece and cutter
+```
 
 ## 验证
 
@@ -116,11 +171,13 @@ node --test workflow_platform/frontend/tests/*.mjs
 node --check workflow_platform/frontend/app.js
 node --check workflow_platform/frontend/virtualMachiningWidget.js
 node --check workflow_platform/frontend/runtime/unityPreviewAdapter.js
+node --check workflow_platform/frontend/runtime/virtualMachiningNodeConfig.js
+node --test workflow_platform/frontend/tests/virtualMachiningWidget.test.mjs
 ```
 
 结果：
 
 ```text
-79 tests, 79 pass, 0 fail
+86 tests, 86 pass, 0 fail
 语法检查通过
 ```

@@ -17,12 +17,13 @@ def suggest_compensation(request: CompensationSuggestionRequest) -> Compensation
         if request.method == "first_order":
             suggestion = -(multiplier * average_error)
         else:
-            stiffness_values = [point.stiffness for point in request.points]
-            average_stiffness = sum(stiffness_values) / len(stiffness_values)
-            correction_denominator = 1 - average_stiffness / (average_stiffness * 0.85) + multiplier
-            if abs(correction_denominator) < 1e-12:
+            if request.reference_average_stiffness is None or request.milling_average_stiffness is None:
+                raise ValueError("reference and milling average stiffness are required")
+            den2 = 1 - request.reference_average_stiffness / request.milling_average_stiffness + multiplier
+            if abs(den2) < 1e-12:
                 raise ValueError("stiffness compensation denominator is too small")
-            suggestion = -(multiplier / correction_denominator) * average_error
+            suggestion = (multiplier / den2) * average_error
+
 
     plan = CompensationPlan(
         method=request.method,

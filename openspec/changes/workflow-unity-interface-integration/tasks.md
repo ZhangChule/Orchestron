@@ -68,6 +68,19 @@
 - [x] P3.3 修改 workflow 侧 Unity adapter / payload mapper。
   - 验证：旧 payload 仍可生成，新 payload 可按说明文件生成。
 
+- [x] P3.3a 增加 Virtual Machining 节点 toolpath 文件入口。
+  - 验证：`.json/.txt` toolpath 可导入、校验、保存到节点配置，并传入 Unity machining payload。
+
+- [x] P3.3b 增加新工件默认预设。
+  - 预设：`L=120mm, H1=55mm, T=6mm, W=120mm, H2=15mm`。
+  - 验证：虚拟加工节点配置界面可选择该预设，并填入几何参数。
+
+- [x] P3.3c 修复 Preview Cutting Unity 入口。
+  - 验证：workflow Docker 服务的 `virtual_machining_platform/UnityBuild` 使用 `FrontendBridge.StartMachiningJob`；历史 `StartMaterialRemovalPreview` 入口不再用于 workflow 手动切削预览。
+
+- [x] P3.3d 增加 UnityBuild 静态资源 cache-busting。
+  - 验证：`UnityBuild.loader.js`、`.data.gz`、`.framework.js.gz`、`.wasm.gz` 请求都带 `v=workflow-unity-interface-integration-v1`，避免浏览器 UnityCache/IndexedDB 继续使用旧 Build。
+
 - [ ] P3.4 引入最小 preview session 记录。
   - 字段：
     - `preview_session_id`

@@ -1,0 +1,20 @@
+{
+  "change": "virtual-machining-thickness-error-field-semantics",
+  "phase": "design",
+  "mode": "manual-fallback",
+  "canonical_spec": "openspec",
+  "source_paths": [
+    "openspec/changes/virtual-machining-thickness-error-field-semantics/proposal.md",
+    "openspec/changes/virtual-machining-thickness-error-field-semantics/design.md",
+    "openspec/changes/virtual-machining-thickness-error-field-semantics/tasks.md",
+    "openspec/changes/virtual-machining-thickness-error-field-semantics/manual-verification.md"
+  ],
+  "constraints": [
+    "Do not modify Unity Build",
+    "Do not change core wall-error solver",
+    "Treat backend points[].error as execution_surface_error_field",
+    "Unity payload points[].error should use design_surface_error_field",
+    "execution_radial_depth_field = current_thickness_field - execution_surface_thickness"
+  ],
+  "open_design_question": "How should matrix-valued execution_radial_depth_field be consumed while the current backend API accepts scalar process.radial_depth?"
+}
