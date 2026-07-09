@@ -5,6 +5,7 @@ import {
   activateVisualizationSession,
   addVisualizationSession,
   createVisualizationSession,
+  invalidateVisualizationSession,
   latestVisualizationSessionForNode,
   visualizationSessionDiagnostics,
 } from '../runtime/workflowVisualizationSessions.js'
@@ -84,6 +85,28 @@ test('activateVisualizationSession marks one session as previewing and keeps oth
   assert.equal(nextState.visualization_sessions.find((session) => session.visualization_session_id === 'vis-a').active, false)
   assert.equal(nextState.visualization_sessions.find((session) => session.visualization_session_id === 'vis-b').active, true)
   assert.equal(nextState.visualization_sessions.find((session) => session.visualization_session_id === 'vis-b').status, 'previewing')
+})
+
+test('invalidateVisualizationSession marks a preview session as untrusted after Unity runtime warnings', () => {
+  const baseState = {
+    active_visualization_session_id: 'vis-b',
+    visualization_sessions: [
+      createVisualizationSession({ virtual_node_id: 'virtual-a', visualization_session_id: 'vis-a', unity_payload: { points: [] } }),
+      createVisualizationSession({ virtual_node_id: 'virtual-b', visualization_session_id: 'vis-b', unity_payload: { points: [] } }),
+    ],
+  }
+
+  const nextState = invalidateVisualizationSession(baseState, 'vis-b', {
+    now: () => '2026-06-18T00:02:00.000Z',
+    runtime_warning: 'PlayerLoop internal function has been called recursively',
+  })
+  const invalidated = nextState.visualization_sessions.find((session) => session.visualization_session_id === 'vis-b')
+
+  assert.equal(nextState.active_visualization_session_id, null)
+  assert.equal(invalidated.active, false)
+  assert.equal(invalidated.status, 'invalidated')
+  assert.equal(invalidated.runtime_warning, 'PlayerLoop internal function has been called recursively')
+  assert.equal(invalidated.invalidated_at, '2026-06-18T00:02:00.000Z')
 })
 
 test('visualizationSessionDiagnostics includes source identity for event logs and UI labels', () => {

@@ -2,23 +2,27 @@ export const VISUALIZATION_SESSION_SCHEMA_VERSION = 'workflow-visualization-sess
 
 export function createVisualizationSession(input = {}) {
   const unityPayload = cloneValue(input.unity_payload ?? input.unityPayload ?? {})
+  const sessionId = input.visualization_session_id
+    ?? input.visualizationSessionId?.()
+    ?? createVisualizationSessionId()
   return {
     active: input.active ?? false,
     created_at: input.created_at ?? timestampFrom(input.now),
     created_by: input.created_by ?? 'manual_preview',
     node_display_label: input.node_display_label ?? input.nodeDisplayLabel ?? input.virtual_node_id ?? null,
+    geometry_artifact_id: input.geometry_artifact_id ?? input.geometryArtifactId ?? null,
     node_result_version_id: input.node_result_version_id ?? input.nodeResultVersionId ?? null,
     parameter_base_version_id: input.parameter_base_version_id ?? input.parameterBaseVersionId ?? null,
     payload_schema_version: input.payload_schema_version ?? VISUALIZATION_SESSION_SCHEMA_VERSION,
     payload_summary: summarizeUnityPayload(unityPayload),
+    preview_session_id: input.preview_session_id ?? input.previewSessionId ?? sessionId,
+    runtime_warning: input.runtime_warning ?? input.runtimeWarning ?? null,
     scene_payload: cloneValue(input.scene_payload ?? input.scenePayload ?? null),
     status: input.status ?? 'ready',
     unity_payload: unityPayload,
     unity_payload_ref: input.unity_payload_ref ?? input.unityPayloadRef ?? null,
     virtual_node_id: input.virtual_node_id ?? input.virtualNodeId ?? null,
-    visualization_session_id: input.visualization_session_id
-      ?? input.visualizationSessionId?.()
-      ?? createVisualizationSessionId(),
+    visualization_session_id: sessionId,
   }
 }
 
@@ -67,6 +71,26 @@ export function completeVisualizationSession(state, sessionId, options = {}) {
 
 export function failVisualizationSession(state, sessionId, options = {}) {
   return setVisualizationSessionStatus(state, sessionId, 'failed', options)
+}
+
+export function invalidateVisualizationSession(state, sessionId, options = {}) {
+  const timestamp = timestampFrom(options.now)
+  return {
+    ...state,
+    active_visualization_session_id: state.active_visualization_session_id === sessionId ? null : state.active_visualization_session_id ?? null,
+    updated_at: timestamp,
+    visualization_sessions: (state.visualization_sessions ?? []).map((session) => {
+      if (session.visualization_session_id !== sessionId) return session
+      return {
+        ...cloneValue(session),
+        active: false,
+        invalidated_at: timestamp,
+        runtime_warning: options.runtime_warning ?? options.runtimeWarning ?? session.runtime_warning ?? null,
+        status: 'invalidated',
+        updated_at: timestamp,
+      }
+    }),
+  }
 }
 
 export function visualizationSessionDiagnostics(session) {

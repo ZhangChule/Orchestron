@@ -109,3 +109,29 @@
 - [ ] D3 引入 voxel / tri-dexel / geometry artifact contract。
 - [ ] D4 扩展后端 schema 支持每关键点执行径向切深矩阵。
 - [ ] D5 增加 Unity 侧多误差场调试显示。
+
+## 2026-06-26 补充任务
+
+- [ ] S1. VM Config 增加 `design_surface_thickness`
+  - 目的：让设计加工面壁厚成为用户可交互定义的工艺参数 base。
+  - 影响目录：`workflow_platform/frontend`。
+  - 输出：VM 节点配置、process parameter base、snapshot 均保存该字段。
+  - 验证：run all / run from selected 后，该字段不被运行态覆盖。
+  - 是否允许代码修改：是。
+  - 运行行为是否可变：默认值需兼容旧 workflow。
+
+- [ ] S2. VM Inspector 移除 misleading scalar radial depth
+  - 目的：取消 `Design radial depth` / `Execution radial depth` 的核心展示。
+  - 影响目录：`workflow_platform/frontend/app.js`。
+  - 输出：改为展示 `design_surface_thickness`、`execution_surface_thickness`、`current_thickness_field` 摘要、`execution_radial_depth_field` 摘要。
+  - 验证：Inspector 不再把执行切深表达为单个数值。
+  - 是否允许代码修改：是。
+  - 运行行为是否可变：仅 UI 展示变化。
+
+- [ ] S3. 定义 `triDexelImageBase64 -> current_thickness_field` 函数边界
+  - 目的：服务于下游虚拟加工后端误差预测计算。
+  - 影响目录：`workflow_platform/frontend/runtime`，后续可能涉及 `virtual_machining_platform/backend`。
+  - 输出：解析函数、协议缺口说明或阻塞错误提示。
+  - 验证：如果可解析，则生成厚度场摘要；如果不可解析，则明确阻止下游 prediction 而非静默回退 scalar radial depth。
+  - 是否允许代码修改：是。
+  - 运行行为是否可变：仅影响选择上游 tri-dexel 几何来源的新路径。

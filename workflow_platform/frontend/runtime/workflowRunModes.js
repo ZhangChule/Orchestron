@@ -33,8 +33,10 @@ export function executableNodesForRunMode(input = {}) {
 export function prepareWorkflowStateForRunMode(input = {}) {
   const mode = input.mode ?? RUN_MODES.RUN_ALL
   if (mode === RUN_MODES.RUN_ALL) {
+    const freshState = input.initialStateFactory()
     return {
-      ...input.initialStateFactory(),
+      ...freshState,
+      ...preservedGeometryInputsForFreshRun(input.currentState, freshState),
       run_history: foldCurrentRunIntoHistory(input.currentState),
     }
   }
@@ -46,6 +48,28 @@ export function prepareWorkflowStateForRunMode(input = {}) {
     }
   }
   throw new Error(`Unsupported run mode: ${mode}`)
+}
+
+function preservedGeometryInputsForFreshRun(currentState, freshState) {
+  return {
+    active_geometry_artifact_refs: {
+      ...cloneValue(currentState?.active_geometry_artifact_refs ?? {}),
+      ...cloneValue(freshState?.active_geometry_artifact_refs ?? {}),
+    },
+    geometry_artifacts: mergeGeometryArtifacts(
+      currentState?.geometry_artifacts ?? [],
+      freshState?.geometry_artifacts ?? [],
+    ),
+  }
+}
+
+function mergeGeometryArtifacts(...artifactLists) {
+  const artifactsById = new Map()
+  for (const artifact of artifactLists.flat()) {
+    if (!artifact?.artifact_id) continue
+    artifactsById.set(artifact.artifact_id, cloneValue(artifact))
+  }
+  return [...artifactsById.values()]
 }
 
 function foldCurrentRunIntoHistory(currentState) {

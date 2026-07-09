@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   WORKPIECE_PRESETS,
   defaultWorkpieceParams,
+  normalizeVirtualMachiningParams,
   parseToolpathText,
   workpiecePresetById,
 } from '../runtime/virtualMachiningNodeConfig.js'
@@ -56,4 +57,50 @@ test('parseToolpathText rejects missing cut segments', () => {
     })),
     /at least one cut segment/i,
   )
+})
+
+test('normalizeVirtualMachiningParams backfills parametric workpiece source and design surface thickness for legacy params', () => {
+  const input = {
+    process: {
+      radial_depth: '1.0',
+      spindle_speed: '7200',
+    },
+    workpiece: {
+      thickness: '6',
+    },
+  }
+
+  const params = normalizeVirtualMachiningParams(input)
+  input.process.radial_depth = '999'
+
+  assert.deepEqual(params.workpiece_source, {
+    file_name: null,
+    geometry_artifact_id: null,
+    mode: 'parametric',
+    upstream_virtual_node_id: null,
+  })
+  assert.equal(params.process.design_surface_thickness, '5')
+  assert.equal(params.design_surface_thickness, '5')
+})
+
+test('normalizeVirtualMachiningParams preserves an upstream-node geometry source', () => {
+  const params = normalizeVirtualMachiningParams({
+    process: {
+      design_surface_thickness: '5.0',
+      radial_depth: '1.0',
+    },
+    workpiece_source: {
+      geometry_artifact_id: 'geo-1',
+      mode: 'upstream_node',
+      upstream_virtual_node_id: 'virtual-1',
+    },
+  })
+
+  assert.deepEqual(params.workpiece_source, {
+    file_name: null,
+    geometry_artifact_id: 'geo-1',
+    mode: 'upstream_node',
+    upstream_virtual_node_id: 'virtual-1',
+  })
+  assert.equal(params.process.design_surface_thickness, '5.0')
 })

@@ -8,9 +8,11 @@ export function createRunSnapshot(input = {}, options = {}) {
   const workflowState = normalizeWorkflowState(input.workflowState ?? {})
   const timestamp = timestampFrom(options.now)
   return {
+    active_geometry_artifact_refs: cloneValue(workflowState.active_geometry_artifact_refs ?? {}),
     app_version: input.appVersion ?? 'workflow-platform-frontend',
     event_log: cloneValue(workflowState.event_log ?? []),
     exported_at: timestamp,
+    geometry_artifacts: cloneValue(workflowState.geometry_artifacts ?? []),
     initial_process_parameter_base: cloneValue(workflowState.initial_process_parameter_base ?? {}),
     node_result_versions: cloneValue(workflowState.node_result_versions ?? []),
     node_results: cloneValue(workflowState.node_results ?? {}),
@@ -50,6 +52,8 @@ export function restoreRunSnapshot(snapshot) {
   const workflowState = normalizeWorkflowState({
     ...(parsed.workflow_state ?? {}),
     event_log: cloneValue(parsed.workflow_state?.event_log ?? parsed.event_log ?? []),
+    active_geometry_artifact_refs: cloneValue(parsed.workflow_state?.active_geometry_artifact_refs ?? parsed.active_geometry_artifact_refs ?? {}),
+    geometry_artifacts: cloneValue(parsed.workflow_state?.geometry_artifacts ?? parsed.geometry_artifacts ?? []),
     initial_process_parameter_base: cloneValue(parsed.workflow_state?.initial_process_parameter_base ?? parsed.initial_process_parameter_base ?? {}),
     node_result_versions: cloneValue(parsed.workflow_state?.node_result_versions ?? parsed.node_result_versions ?? []),
     node_results: cloneValue(parsed.workflow_state?.node_results ?? parsed.node_results ?? {}),
@@ -79,7 +83,9 @@ function normalizeWorkflowState(workflowState) {
   const cloned = cloneValue(workflowState ?? {})
   return {
     ...cloned,
+    active_geometry_artifact_refs: cloneValue(cloned.active_geometry_artifact_refs ?? {}),
     event_log: cloneValue(cloned.event_log ?? []),
+    geometry_artifacts: cloneValue(cloned.geometry_artifacts ?? []),
     initial_process_parameter_base: cloneValue(cloned.initial_process_parameter_base ?? {}),
     node_result_versions: cloneValue(cloned.node_result_versions ?? []),
     node_results: cloneValue(cloned.node_results ?? {}),

@@ -179,3 +179,45 @@ design_surface_error_field
 - 保持 Unity Build 和当前可执行 payload 不变。
 - 保持后端核心误差计算不变。
 - 技术路线已确认：先 A 阶段完成前端语义闭环与后处理，再 C 阶段扩展后端 schema 支持每关键点执行径向切深。
+
+## 2026-06-26 补充：VM Inspector 与厚度字段表达修正
+
+最新设计判断：VM 前端 inspector 不应继续把 `Design radial depth` 和 `Execution radial depth` 作为核心字段展示。
+
+原因是新的厚度语义下，执行径向切深不再是单一标量，而是：
+
+```text
+execution_radial_depth_field[key_point]
+  = current_thickness_field[key_point] - execution_surface_thickness
+```
+
+因此，VM 节点 UI 与 runtime state 应优先表达以下字段：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `design_surface_thickness` | 标量 | 用户在 VM 节点 config 中交互定义，属于工艺参数 base。 |
+| `execution_surface_thickness` | 标量 | workflow 运行时由上游工艺优化/补偿 patch 确定。 |
+| `current_thickness_field` | 矩阵/场 | 当前工件壁厚状态，可来自初始几何或上游 tri-dexel artifact 解析。 |
+| `execution_radial_depth_field` | 矩阵/场 | 由 `current_thickness_field - execution_surface_thickness` 派生。 |
+
+其中：
+
+- `design_surface_thickness` 应进入 VM 节点配置和参数 base；
+- `execution_surface_thickness` 不应作为静态用户配置覆盖，而应由 workflow 运行态计算；
+- inspector 可以展示 `execution_radial_depth_field` 的摘要，例如 count / min / max / mean，但不应展示单个 `Execution radial depth`；
+- 当前若仍保留 scalar `process.radial_depth`，它只能作为兼容字段或后端临时输入，不应再作为用户理解中的真实执行切深。
+
+## 2026-06-26 补充：tri-dexel 到当前壁厚场
+
+后续 `workflow-tridexel-geometry-dataflow` build 需要补齐：
+
+```text
+triDexelImageBase64
+  -> current_thickness_field
+  -> execution_radial_depth_field
+  -> /prediction/wall-error
+```
+
+这意味着 `current_thickness_field` 不应只来自默认常量场或上一轮 `computed_actual_thickness_field`，还应支持从上游 Unity tri-dexel 几何状态解析或派生。
+
+如果当前 tri-dexel base64 内部格式尚不足以在前端直接解析，应把“缺少 tri-dexel 到厚度场的解析函数/协议”作为明确阻塞点，而不是继续用 scalar radial depth 伪装完整几何传递。

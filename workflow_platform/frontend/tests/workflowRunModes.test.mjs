@@ -183,10 +183,16 @@ test('executableNodesForRunMode reruns stale upstream and stops at the selected 
 
 test('prepareWorkflowStateForRunMode starts a fresh state for run all and resumes existing state for run from selected', () => {
   const previousState = createInitialWorkflowState({
+    active_geometry_artifact_refs: { 'virtual-2': 'geo-imported' },
     event_log: [
       { event_type: 'run_started', event_sequence: 1, run_id: 'run-previous', summary: 'started' },
       { event_type: 'run_completed', event_sequence: 2, run_id: 'run-previous', summary: 'completed' },
     ],
+    geometry_artifacts: [{
+      artifact_id: 'geo-imported',
+      data_base64: 'encoded-tridexel-image',
+      source_type: 'imported_tridexel_image',
+    }],
     node_result_versions: [
       createNodeResultVersion({ node_id: 'virtual-1', node_result_version_id: 'result-version-1' }),
     ],
@@ -213,6 +219,8 @@ test('prepareWorkflowStateForRunMode starts a fresh state for run all and resume
 
   assert.equal(nextAll.run_id, 'run-new')
   assert.deepEqual(nextAll.event_log, [])
+  assert.deepEqual(nextAll.active_geometry_artifact_refs, { 'virtual-2': 'geo-imported' })
+  assert.deepEqual(nextAll.geometry_artifacts.map((item) => item.artifact_id), ['geo-imported'])
   assert.deepEqual(nextAll.node_result_versions, [])
   assert.equal(nextAll.run_history.length, 1)
   assert.equal(nextAll.run_history[0].run_id, 'run-previous')

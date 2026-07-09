@@ -36,6 +36,8 @@ test('createInitialWorkflowState returns the requested minimal WorkflowState sha
   assert.deepEqual(state, {
     created_at: '2026-06-13T00:00:00.000Z',
     event_log: [],
+    active_geometry_artifact_refs: {},
+    geometry_artifacts: [],
     initial_process_parameter_base: {},
     node_context: {},
     node_results: {},

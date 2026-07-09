@@ -55,10 +55,12 @@ export function buildThicknessSemanticsForPrediction(input = {}) {
     ? currentThicknessScalar - designRadialDepth
     : legacyRadialDepth
   const designSurfaceThickness = firstFiniteNumber(
-    configured.design_surface_thickness,
-    configured.designSurfaceThickness,
     process.design_surface_thickness,
     process.designSurfaceThickness,
+    designProcess.design_surface_thickness,
+    designProcess.designSurfaceThickness,
+    configured.design_surface_thickness,
+    configured.designSurfaceThickness,
     defaultDesignSurfaceThickness,
   )
   const compensationValue = firstFiniteNumber(
@@ -74,6 +76,8 @@ export function buildThicknessSemanticsForPrediction(input = {}) {
     configured.executionSurfaceThickness,
     process.execution_surface_thickness,
     process.executionSurfaceThickness,
+    designProcess.execution_surface_thickness,
+    designProcess.executionSurfaceThickness,
     designSurfaceThickness - compensationValue,
   )
   const currentThicknessField = normalizeCurrentThicknessField(
@@ -101,6 +105,58 @@ export function buildThicknessSemanticsForPrediction(input = {}) {
     execution_radial_depth_field: executionRadialDepthField,
     execution_surface_thickness: executionSurfaceThickness,
     source: 'workflow_frontend_a_stage',
+  }
+}
+
+export function validateThicknessSemanticsForPrediction(semantics = {}, options = {}) {
+  const invalidPoints = (semantics.execution_radial_depth_field ?? [])
+    .filter((point) => !Number.isFinite(Number(point.execution_radial_depth)) || Number(point.execution_radial_depth) <= 0)
+    .map((point) => ({
+      current_thickness: point.current_thickness,
+      execution_radial_depth: point.execution_radial_depth,
+      id: point.id,
+    }))
+
+  if (invalidPoints.length) {
+    const first = invalidPoints[0]
+    return {
+      error_code: 'non_positive_execution_radial_depth',
+      invalid_points: invalidPoints,
+      message: `Invalid thickness semantics: current thickness must be greater than execution surface thickness before wall-error prediction. First invalid point ${first.id ?? 'unknown'} has current_thickness=${first.current_thickness} and execution_radial_depth=${first.execution_radial_depth}.`,
+      ok: false,
+    }
+  }
+
+  const toolDiameter = firstFiniteNumber(
+    options.tool?.diameter,
+    options.tool_diameter,
+    options.toolDiameter,
+  )
+  const calibrationSampleMaxFactor = firstFiniteNumber(
+    options.calibration_sample_max_factor,
+    options.calibrationSampleMaxFactor,
+    1.5,
+  )
+  const compatibleRadialDepth = Number(semantics.compatible_radial_depth)
+  if (
+    Number.isFinite(toolDiameter)
+    && Number.isFinite(calibrationSampleMaxFactor)
+    && Number.isFinite(compatibleRadialDepth)
+    && compatibleRadialDepth * calibrationSampleMaxFactor > toolDiameter
+  ) {
+    return {
+      error_code: 'radial_depth_exceeds_calibration_range',
+      invalid_points: [],
+      message: `Invalid thickness semantics: compatible radial depth ${compatibleRadialDepth} mm exceeds backend calibration range for tool diameter ${toolDiameter} mm. The backend currently samples up to ${calibrationSampleMaxFactor}x ae before wall-error prediction.`,
+      ok: false,
+    }
+  }
+
+  return {
+    error_code: null,
+    invalid_points: [],
+    message: '',
+    ok: true,
   }
 }
 
@@ -132,16 +188,24 @@ export function requestWithCompatibleRadialDepth(request, semantics) {
 export function postprocessWallErrorPointsForDesignSurface(points = [], semantics = {}) {
   const designSurfaceThickness = numberValue(semantics.design_surface_thickness, 0)
   const executionSurfaceThickness = numberValue(semantics.execution_surface_thickness, designSurfaceThickness)
+  const depthById = new Map(
+    (semantics.execution_radial_depth_field ?? [])
+      .filter((point) => Number.isFinite(Number(point.execution_radial_depth)))
+      .map((point) => [String(point.id), Number(point.execution_radial_depth)]),
+  )
 
-  return points.map((point) => {
+  return points.map((point, index) => {
     const executionSurfaceError = numberValue(point.error, 0)
     const computedActualThickness = executionSurfaceThickness + executionSurfaceError
     const designSurfaceError = computedActualThickness - designSurfaceThickness
+    const executionRadialDepth = depthById.get(String(point.id ?? ''))
+      ?? numberValue(semantics.execution_radial_depth_field?.[index]?.execution_radial_depth, NaN)
     return {
       ...point,
       computed_actual_thickness: computedActualThickness,
       design_surface_error: designSurfaceError,
       error: designSurfaceError,
+      ...(Number.isFinite(executionRadialDepth) ? { execution_radial_depth: executionRadialDepth } : {}),
       execution_surface_error: executionSurfaceError,
     }
   })
@@ -175,6 +239,19 @@ function normalizeCurrentThicknessField(field, keyPoints, fallbackThickness) {
   }
 
   if (field && typeof field === 'object') {
+    if (Array.isArray(field.values)) {
+      const pointRefs = Array.isArray(field.point_refs) ? field.point_refs : []
+      return keyPoints.map((point, index) => {
+        const id = keyPointId(point, index)
+        const refIndex = pointRefs.findIndex((ref) => keyPointId(ref, -1) === id || String(ref) === id)
+        const valueIndex = refIndex >= 0 ? refIndex : index
+        return {
+          current_thickness: currentThicknessValue(field.values[valueIndex], fallbackThickness),
+          id,
+        }
+      })
+    }
+
     return keyPoints.map((point, index) => {
       const id = keyPointId(point, index)
       return {

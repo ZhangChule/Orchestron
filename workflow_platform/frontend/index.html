@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Workflow Platform</title>
+    <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -57,6 +58,7 @@
               <button id="addLogicNode" class="secondary" type="button" data-i18n="actions.addLogic">Add Logic Node</button>
               <button id="addVirtualNode" class="secondary" type="button" data-i18n="actions.addVirtual">Add Virtual Node</button>
               <button id="loadClosedLoopDemo" class="secondary" type="button" data-i18n="actions.loadClosedLoopDemo">Load Closed-loop Demo</button>
+              <button id="loadTriDexelExportDemo" class="secondary" type="button" data-i18n="actions.loadTriDexelExportDemo">Load TriDexel Demo</button>
               <button id="exportRunSnapshot" class="secondary" type="button" data-i18n="actions.exportSnapshot">Export Snapshot</button>
               <button id="importRunSnapshot" class="secondary" type="button" data-i18n="actions.importSnapshot">Import Snapshot</button>
               <input id="snapshotImportFile" class="hidden-file-input" type="file" accept="application/json,.json">
@@ -81,10 +83,18 @@
               </div>
               <div class="virtual-actions">
                 <button id="loadVirtualMachining" type="button" data-i18n="actions.loadVirtual">Load Unity</button>
+                <button id="prepareVirtualScene" class="secondary" type="button" data-i18n="actions.prepareScene">Prepare Scene</button>
+                <button id="applyVirtualErrorCloud" class="secondary" type="button" data-i18n="actions.applyErrorCloud">Apply Error Cloud</button>
+                <button id="startVirtualCutting" type="button" data-i18n="actions.startCutting">Start Cutting</button>
+                <button id="reloadVirtualRuntime" class="secondary" type="button" data-i18n="actions.reloadUnityRuntime">Reload Runtime</button>
                 <button id="resetVirtualScene" class="secondary" type="button" data-i18n="actions.resetScene">Reset Scene</button>
+                <button id="importTriDexelArtifact" class="secondary" type="button" data-i18n="actions.importTriDexel">Import TriDexel</button>
+                <button id="exportTriDexelImage" class="secondary" type="button" data-i18n="actions.exportTriDexel">Export TriDexel</button>
+                <input id="triDexelArtifactImportFile" class="hidden-file-input" type="file" accept="application/json,.json">
               </div>
             </header>
             <div class="virtual-content">
+              <p class="virtual-control-help" data-i18n="virtual.controlHelp">Select a Virtual Machining node. Prepare Scene loads its geometry, Apply Error Cloud shows its design-surface error field, and Start Cutting runs material removal. Reload Runtime after repeated Unity runtime warnings.</p>
               <div class="virtual-canvas-wrap">
                 <canvas id="virtualMachiningCanvas" tabindex="-1"></canvas>
                 <div class="virtual-status">
@@ -151,6 +161,30 @@
         }
       }
     </script>
-    <script type="module" src="./app.js"></script>
+    <script>
+      window.workflowShowBootstrapError = function workflowShowBootstrapError(message) {
+        const text = String(message || 'Workflow frontend failed to load.')
+        const status = document.querySelector('#graphStatus')
+        if (status) status.textContent = text
+        const catalog = document.querySelector('#processCatalog')
+        if (catalog && !catalog.children.length) {
+          const button = document.createElement('button')
+          button.className = 'process-card ghost'
+          button.type = 'button'
+          button.disabled = true
+          button.textContent = text
+          catalog.appendChild(button)
+        }
+        document.body.dataset.status = 'error'
+      }
+      window.addEventListener('error', function handleWorkflowBootstrapError(event) {
+        window.workflowShowBootstrapError(event.message || event.error?.message)
+      })
+      window.addEventListener('unhandledrejection', function handleWorkflowBootstrapRejection(event) {
+        window.workflowShowBootstrapError(event.reason?.message || event.reason)
+      })
+    </script>
+    <script type="module" src="./app.js?v=workflow-tridexel-geometry-dataflow-v21" onerror="window.workflowShowBootstrapError && window.workflowShowBootstrapError('Workflow app module failed to load. Check DevTools Network for the failed module request.')"></script>
   </body>
 </html>
+

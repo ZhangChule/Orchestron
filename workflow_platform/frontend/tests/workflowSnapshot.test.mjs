@@ -10,7 +10,15 @@ import {
 
 test('createRunSnapshot exports graph, WorkflowState, results, metrics, parameters, and events', () => {
   const workflowState = {
+    active_geometry_artifact_refs: { 'virtual-2': 'geo-1' },
     event_log: [{ event_type: 'run_completed', node_id: null, summary: 'done', timestamp: '2026-06-15T00:00:01.000Z' }],
+    geometry_artifacts: [{
+      artifact_id: 'geo-1',
+      artifact_type: 'tridexel_image',
+      data_base64: 'dHJpZGV4ZWw=',
+      source_node_id: 'virtual-1',
+      stale: false,
+    }],
     initial_process_parameter_base: { radial_depth: '1.0' },
     node_result_versions: [{ node_id: 'virtual-1', node_result_version_id: 'result-version-1' }],
     node_results: { 'virtual-1': { result: { type: 'wall_error' } } },
@@ -49,6 +57,8 @@ test('createRunSnapshot exports graph, WorkflowState, results, metrics, paramete
   assert.equal(snapshot.run_mode, 'run_from_selected')
   assert.equal(snapshot.timestamp, '2026-06-15T00:00:02.000Z')
   assert.deepEqual(snapshot.run_history, [])
+  assert.deepEqual(snapshot.active_geometry_artifact_refs, workflowState.active_geometry_artifact_refs)
+  assert.deepEqual(snapshot.geometry_artifacts, workflowState.geometry_artifacts)
   assert.deepEqual(snapshot.workflow_graph.nodes.map((node) => node.id), ['virtual-1'])
   assert.deepEqual(snapshot.workflow_graph.edges, [{ from: 'virtual-1', to: 'stop-1' }])
   assert.deepEqual(snapshot.workflow_state, { ...workflowState, run_mode: 'run_all' })
@@ -88,6 +98,8 @@ test('parseRunSnapshot accepts JSON text and restoreRunSnapshot returns graph pl
     selectedNodeId: 'b',
     workflowState: {
       event_log: [{ event_type: 'node_completed', node_id: 'a', summary: 'ok', timestamp: '2026-06-15T00:00:00.000Z' }],
+      active_geometry_artifact_refs: { b: 'geo-a' },
+      geometry_artifacts: [{ artifact_id: 'geo-a', data_base64: 'abc', source_node_id: 'a' }],
       initial_process_parameter_base: { radial_depth: '1.0' },
       node_result_versions: [{ node_id: 'a', node_result_version_id: 'result-version-a' }],
       node_results: { a: { result: true } },
@@ -110,6 +122,8 @@ test('parseRunSnapshot accepts JSON text and restoreRunSnapshot returns graph pl
   assert.equal(restored.workflowState.status, 'paused')
   assert.equal(restored.workflowState.node_results.a.result, true)
   assert.equal(restored.workflowState.event_log[0].event_type, 'node_completed')
+  assert.deepEqual(restored.workflowState.active_geometry_artifact_refs, { b: 'geo-a' })
+  assert.deepEqual(restored.workflowState.geometry_artifacts.map((item) => item.artifact_id), ['geo-a'])
   assert.deepEqual(restored.workflowState.initial_process_parameter_base, { radial_depth: '1.0' })
   assert.deepEqual(restored.workflowState.parameter_base_versions.map((item) => item.base_version_id), ['base-a'])
   assert.deepEqual(restored.workflowState.parameter_patches.map((item) => item.patch_id), ['patch-a'])
@@ -146,6 +160,8 @@ test('restoreRunSnapshot backfills P1 dataflow arrays for old snapshots', () => 
   assert.deepEqual(restored.workflowState.parameter_patches, [])
   assert.deepEqual(restored.workflowState.node_result_versions, [])
   assert.deepEqual(restored.workflowState.visualization_sessions, [])
+  assert.deepEqual(restored.workflowState.geometry_artifacts, [])
+  assert.deepEqual(restored.workflowState.active_geometry_artifact_refs, {})
 })
 
 test('restoreRunSnapshot accepts legacy snapshots without schema_version', () => {

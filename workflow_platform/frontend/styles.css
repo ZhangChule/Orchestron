@@ -1,4 +1,4 @@
-* {
+﻿* {
   box-sizing: border-box;
 }
 
@@ -523,6 +523,17 @@ label span,
   padding: 10px;
 }
 
+
+.virtual-control-help {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: var(--surface-soft);
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .virtual-canvas-wrap {
   position: relative;
   overflow: hidden;
@@ -1377,3 +1388,4 @@ body[data-status="connecting"] .graph-toolbar strong {
     min-width: 820px;
   }
 }
+

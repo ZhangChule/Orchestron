@@ -1,8 +1,10 @@
 export function createInitialWorkflowState(workflow = {}) {
   const timestamp = timestampFrom(workflow.now)
   return {
+    active_geometry_artifact_refs: cloneValue(workflow.active_geometry_artifact_refs ?? {}),
     created_at: timestamp,
     event_log: cloneValue(workflow.event_log ?? []),
+    geometry_artifacts: cloneValue(workflow.geometry_artifacts ?? []),
     initial_process_parameter_base: cloneValue(
       workflow.initial_process_parameter_base
         ?? workflow.initialProcessParameterBase

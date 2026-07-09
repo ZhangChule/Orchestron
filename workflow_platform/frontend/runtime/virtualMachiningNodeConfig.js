@@ -31,6 +31,27 @@ export function defaultWorkpieceParams(id = 'default-thinwall') {
   return cloneValue(workpiecePresetById(id).workpiece)
 }
 
+export function normalizeVirtualMachiningParams(params = {}) {
+  const next = cloneValue(params ?? {})
+  next.process = cloneValue(next.process ?? {})
+  next.workpiece = cloneValue(next.workpiece ?? {})
+  next.workpiece_source = normalizeWorkpieceSource(next.workpiece_source)
+
+  const designSurfaceThickness = firstFiniteString(
+    next.process.design_surface_thickness,
+    next.process.designSurfaceThickness,
+    next.design_surface_thickness,
+    next.designSurfaceThickness,
+    defaultDesignSurfaceThickness(next),
+  )
+  if (designSurfaceThickness != null) {
+    next.process.design_surface_thickness = designSurfaceThickness
+    next.design_surface_thickness = designSurfaceThickness
+  }
+
+  return next
+}
+
 export function parseToolpathText(text) {
   const toolpath = JSON.parse(String(text ?? ''))
   if (!toolpath || typeof toolpath !== 'object' || Array.isArray(toolpath)) {
@@ -52,6 +73,33 @@ export function parseToolpathText(text) {
     start: normalizePoint(toolpath.start),
     segments,
   }
+}
+
+function normalizeWorkpieceSource(source = {}) {
+  const mode = ['parametric', 'file', 'upstream_node'].includes(source?.mode)
+    ? source.mode
+    : 'parametric'
+  return {
+    file_name: source?.file_name ?? source?.fileName ?? null,
+    geometry_artifact_id: source?.geometry_artifact_id ?? source?.geometryArtifactId ?? null,
+    mode,
+    upstream_virtual_node_id: source?.upstream_virtual_node_id ?? source?.upstreamVirtualNodeId ?? null,
+  }
+}
+
+function defaultDesignSurfaceThickness(params) {
+  const currentThickness = numberValue(params.workpiece?.thickness, NaN)
+  const radialDepth = numberValue(params.process?.radial_depth ?? params.process?.radialDepth, NaN)
+  if (!Number.isFinite(currentThickness) || !Number.isFinite(radialDepth)) return null
+  return String(currentThickness - radialDepth)
+}
+
+function firstFiniteString(...values) {
+  for (const value of values) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return String(value)
+  }
+  return null
 }
 
 function normalizeSegment(segment, index) {
